@@ -75,3 +75,14 @@ model Session {
   @@index([expiresAt])
   @@map("sessions")
 }
+
+// Shared, privacy-preserving authentication attempt counters; no raw identifiers.
+model LoginAttemptBucket {
+  keyDigest       String   @id @map("key_digest") @db.Char(64)
+  windowStartedAt DateTime @map("window_started_at") @db.Timestamptz(3)
+  expiresAt       DateTime @map("expires_at") @db.Timestamptz(3)
+  attemptCount    Int      @map("attempt_count")
+
+  @@index([expiresAt])
+  @@map("login_attempt_buckets")
+}

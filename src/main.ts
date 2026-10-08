@@ -1,8 +1,23 @@
+import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
-
-async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  await app.listen(process.env.PORT ?? 3000);
+import { Environment } from './config/environment.js';
+import { configureHttp } from './http/configure-http.js';
+async function bootstrap(): Promise<void> {
+  const app = await NestFactory.create(AppModule, {
+    bodyParser: false,
+    abortOnError: false,
+  });
+  configureHttp(app);
+  app.enableShutdownHooks();
+  const environment = app.get(Environment);
+  await app.listen(environment.port, environment.host);
 }
-await bootstrap();
+try {
+  await bootstrap();
+} catch {
+  console.error(
+    'Backend startup failed. Check environment and database connectivity.',
+  );
+  process.exitCode = 1;
+}
