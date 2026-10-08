@@ -1,0 +1,77 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Fixed operational roles. Authorization is enforced by backend services.
+enum UserRole {
+  ADMIN
+  WAREHOUSE_KEEPER
+  EMPLOYEE
+  MERCHANT
+
+  @@map("user_role")
+}
+
+// A person account. Merchant ownership and account creation are distinct relations.
+model User {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email              String   @unique @db.VarChar(254)
+  displayName        String   @map("display_name") @db.VarChar(150)
+  passwordHash       String   @map("password_hash") @db.Text
+  role               UserRole
+  merchantId         String?  @map("merchant_id") @db.Uuid
+  isActive           Boolean  @default(true) @map("is_active")
+  mustChangePassword Boolean  @default(true) @map("must_change_password")
+  createdById        String?  @map("created_by_id") @db.Uuid
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  merchant         Merchant?  @relation("MerchantAccounts", fields: [merchantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  creator          User?      @relation("AccountCreator", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdUsers     User[]     @relation("AccountCreator")
+  createdMerchants Merchant[] @relation("MerchantCreator")
+  sessions         Session[]
+
+  @@index([merchantId])
+  @@index([role, isActive])
+  @@map("users")
+}
+
+// The business owning goods, independent from its read-only login accounts.
+model Merchant {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code        String   @unique @db.VarChar(8)
+  name        String   @db.VarChar(200)
+  phone       String   @db.VarChar(32)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdById String   @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  creator  User   @relation("MerchantCreator", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  accounts User[] @relation("MerchantAccounts")
+
+  @@map("merchants")
+}
+
+// Only a token digest is persisted. Expiry/idle/account checks belong to auth services.
+model Session {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash") @db.Char(64)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastSeenAt DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+  @@map("sessions")
+}
