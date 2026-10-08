@@ -36,6 +36,7 @@ model User {
   createdUsers     User[]     @relation("AccountCreator")
   createdMerchants Merchant[] @relation("MerchantCreator")
   sessions         Session[]
+  createdItems     Item[]     @relation("ItemCreator")
 
   @@index([merchantId])
   @@index([role, isActive])
@@ -53,8 +54,10 @@ model Merchant {
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  creator  User   @relation("MerchantCreator", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  accounts User[] @relation("MerchantAccounts")
+  creator          User              @relation("MerchantCreator", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  accounts         User[]            @relation("MerchantAccounts")
+  items            Item[]
+  itemCodeSequence ItemCodeSequence?
 
   @@map("merchants")
 }
@@ -85,4 +88,35 @@ model LoginAttemptBucket {
 
   @@index([expiresAt])
   @@map("login_attempt_buckets")
+}
+
+// Catalog identity only. Quantities will originate from stock movements.
+model Item {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  merchantId  String   @map("merchant_id") @db.Uuid
+  ordinal     BigInt
+  code        String   @unique @db.VarChar(40)
+  name        String   @db.VarChar(200)
+  brand       String?  @db.VarChar(100)
+  color       String?  @db.VarChar(100)
+  weightKg    Decimal  @map("weight_kg") @db.Decimal(12, 3)
+  notes       String?  @db.VarChar(2000)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdById String   @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  merchant    Merchant @relation(fields: [merchantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  creator     User     @relation("ItemCreator", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([merchantId, ordinal])
+  @@index([merchantId, isActive, createdAt, id])
+  @@map("items")
+}
+
+model ItemCodeSequence {
+  merchantId String   @id @map("merchant_id") @db.Uuid
+  lastValue  BigInt   @default(0) @map("last_value")
+  merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@map("item_code_sequences")
 }

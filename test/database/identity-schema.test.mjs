@@ -120,3 +120,65 @@ void test('identity database invariants', async (t) => {
       (error) => error.code === '23505' && error.constraint === 'merchants_code_key');
   }));
 });
+
+
+void test('catalog database invariants', async (t) => {
+  const insertItem = `INSERT INTO items(merchant_id, ordinal, code, name, brand, color, weight_kg, created_by_id)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`;
+  const valid = [merchantId,1,'MZ-000001','Widget','Acme','Blue','0.250',adminId];
+  const invalid = [
+    ['nonpositive ordinal',[merchantId,0,'MZ-000000','Widget',null,null,'1',adminId],'items_ordinal_positive_check'],
+    ['wrong prefix',[merchantId,1,'ZZ-000001','Widget',null,null,'1',adminId],'items_code_identity_check'],
+    ['wrong number',[merchantId,1,'MZ-000002','Widget',null,null,'1',adminId],'items_code_identity_check'],
+    ['empty name',[merchantId,1,'MZ-000001','  ',null,null,'1',adminId],'items_name_nonempty_check'],
+    ['empty brand',[merchantId,1,'MZ-000001','Widget',' ',null,'1',adminId],'items_brand_nonempty_check'],
+    ['empty color',[merchantId,1,'MZ-000001','Widget',null,'','1',adminId],'items_color_nonempty_check'],
+    ['zero weight',[merchantId,1,'MZ-000001','Widget',null,null,'0',adminId],'items_weight_positive_check'],
+    ['negative weight',[merchantId,1,'MZ-000001','Widget',null,null,'-1',adminId],'items_weight_positive_check'],
+    ['NaN weight',[merchantId,1,'MZ-000001','Widget',null,null,'NaN',adminId],'items_weight_positive_check'],
+    ['missing merchant',[randomUUID(),1,'MZ-000001','Widget',null,null,'1',adminId],'items_merchant_id_fkey','23503'],
+    ['missing creator',[merchantId,1,'MZ-000001','Widget',null,null,'1',randomUUID()],'items_created_by_id_fkey','23503'],
+  ];
+  for (const [name, values, constraint, code] of invalid)
+    await t.test(name, () => rejects(insertItem, values, constraint, code));
+  for (const field of ['id','merchant_id','ordinal','code','created_by_id','created_at']) {
+    await t.test(`immutable item ${field}`, () => isolated(async () => {
+      const id=(await database.query(`${insertItem} RETURNING id`,valid)).rows[0].id;
+      const replacement = field==='ordinal'?'2':field==='code'?"'MZ-000002'":field==='created_at'?"created_at + interval '1 second'":"gen_random_uuid()";
+      await assert.rejects(database.query(`UPDATE items SET ${field}=${replacement} WHERE id=$1`,[id]),
+        error => error.code==='23514' && error.constraint==='items_identity_immutable');
+    }));
+  }
+  await t.test('nullable descriptors and mutable status preserve identity', () => isolated(async () => {
+    const id=(await database.query(`${insertItem} RETURNING id`,valid)).rows[0].id;
+    await database.query("UPDATE items SET name='Renamed',brand=NULL,color=NULL,notes='Scratch details are recorded on receipt',weight_kg=1.125,is_active=false WHERE id=$1",[id]);
+    const row=(await database.query('SELECT code,weight_kg,is_active FROM items WHERE id=$1',[id])).rows[0];
+    assert.equal(row.code,'MZ-000001');assert.equal(row.weight_kg,'1.125');assert.equal(row.is_active,false);
+  }));
+  await t.test('code expands beyond six digits without truncation', () => isolated(async () => {
+    await database.query(insertItem,[merchantId,1000000,'MZ-1000000','Widget',null,null,'1',adminId]);
+    assert.equal((await database.query('SELECT code FROM items')).rows[0].code,'MZ-1000000');
+  }));
+  await t.test('duplicate identity is rejected', () => isolated(async () => {
+    await database.query(insertItem,valid);
+    await assert.rejects(database.query(insertItem,valid),error => error.code==='23505');
+  }));
+  await t.test('items restrict deletion of their merchant', () => isolated(async () => {
+    await database.query(insertItem,valid);
+    await assert.rejects(database.query('DELETE FROM merchants WHERE id=$1',[merchantId]),
+      error => error.code==='23503' && error.constraint==='items_merchant_id_fkey');
+  }));
+  await t.test('items restrict deletion of their creator', () => isolated(async () => {
+    const userId=(await database.query(`${insertUser} RETURNING id`,['catalog@example.test','EMPLOYEE',null,adminId])).rows[0].id;
+    await database.query(insertItem,[...valid.slice(0,7),userId]);
+    await assert.rejects(database.query('DELETE FROM users WHERE id=$1',[userId]),
+      error => error.code==='23503' && error.constraint==='items_created_by_id_fkey');
+  }));
+  await t.test('sequence counter cannot be negative', () => rejects(
+    'INSERT INTO item_code_sequences(merchant_id,last_value) VALUES ($1,-1)',[merchantId],'item_code_sequences_nonnegative_check'));
+  await t.test('sequence counter restricts merchant deletion', () => isolated(async () => {
+    await database.query('INSERT INTO item_code_sequences(merchant_id,last_value) VALUES ($1,0)',[merchantId]);
+    await assert.rejects(database.query('DELETE FROM merchants WHERE id=$1',[merchantId]),
+      error => error.code==='23503' && error.constraint==='item_code_sequences_merchant_id_fkey');
+  }));
+});
