@@ -1,12 +1,12 @@
 # Stocked Backend — حالة التنفيذ وخطة الاستكمال
 
 > آخر تحديث: 9 أكتوبر 2026.
-> آخر commit برمجي قائم: `84d4f86` — إصلاح تحقق المواقع وعقود الاستجابة؛ مرحلة الجرد الأساسية في `cc372cc`. الترحيل مطبق محليًا على `stocked_dev`.
+> آخر commit قائم ومرفوع: `7f15568` — فصل فلاتر الأرصدة. سجل التدقيق الدائم منفذ في ملفات العمل؛ نتائج التحقق والترحيل في القسم20.
 > هذا الملف نقطة بدء لأي جلسة عمل لاحقة، ويُحدَّث بعد كل مرحلة. الحالة هنا تخص الباك إند؛ لا تعني اكتمال الواجهات أو جاهزية الإنتاج.
 
 ## 1. أين وصل المشروع؟
 
-تم تنفيذ الباك إند حتى **الجرد والمواقع وقفل كل التعديلات أثناء الجرد** في ملفات العمل، بعد اعتماد المستخدم للتصميم. طُبق الترحيل على stocked_dev المحلي، ونجحت اختبارات المرحلة. الخطوة التالية **مراجعة اكتمال المرحلة الأولى وتجربة قبول الدورة الكاملة مع العميل**؛ الواجهات والإنتاج ما زالا غير مكتملين.
+تم تنفيذ الجرد والمواقع وقفل التعديلات، واستكمال عقود القراءة، وفصل فلاتر الأرصدة، ثم سجل تدقيق دائم لتعديلات الأصناف والمواقع والإدارة وفق المخطط المعتمد. تفاصيل وفحوص المرحلة الأحدث في القسم20؛ الواجهات والإنتاج ما زالا غير مكتملين.
 
 | البند | الحالة الحالية |
 | --- | --- |
@@ -23,12 +23,13 @@
 | قراءة التاجر لبياناته فقط من الباك إند | منفذة |
 | واجهة تاجر منفصلة وربط Flutter بالباك إند | لم تنفذ ضمن هذه الدفعات |
 | الجرد والمواقع وقفل كل التعديلات | منفذ محليًا ومختبر؛ غير منشور إنتاجيًا |
+| سجل تدقيق الأصناف والمواقع والإدارة | منفذ في ملفات العمل؛ التفاصيل والفحوص في القسم20 |
 | تشغيل الإنتاج والنسخ الاحتياطي والمراقبة | لم يكتمل |
 | تكامل شركات الشحن والمتاجر | مؤجل باتفاق المرحلة الأولى |
 
 **حدود العمل:** مشروع الباك إند هو `/Users/mohamedzidan/project/stocked-backend`. مشروع Flutter هو `/Users/mohamedzidan/project/stocked`، ولم يُعدَّل في مراحل الباك إند الحالية. الباك إند مستقل عن Firebase. لا ترحيل بيانات قديمة؛ بدء التشغيل الجديد يكون دون أرصدة افتتاحية، والكمية تبدأ من أول استلام فعلي.
 
-الريبو: [stocked-backend](https://github.com/muhamedxzidan/stocked-backend). آخر commit تنفيذ على `main` هو `84d4f86`؛ طلب المستخدم رفعه مع تحديث التوثيق الحالي إلى GitHub. تحقق من HEAD والفرع وحالة الملفات عند الاستكمال؛ هذه لقطة بتاريخ التحديث وليست قراءة تلقائية للمستقبل.
+الريبو: [stocked-backend](https://github.com/muhamedxzidan/stocked-backend). آخر commit تنفيذ مرفوع على `main` هو `7f15568`؛ التغييرات التالية في سجل التدقيق محلية حتى طلب push آخر. تحقق من HEAD والفرع وحالة الملفات عند الاستكمال؛ هذه لقطة بتاريخ التحديث وليست قراءة تلقائية للمستقبل.
 
 ## 2. البيئة والتقسيم المعتمد
 
@@ -589,7 +590,7 @@ Conventional Commit المقترح: `fix(api): complete read contracts and stock
 
 اعتمد المستخدم [balance-query-blueprint.md](balance-query-blueprint.md) بعبارة
 «نفذ». نفذ Codex التغيير المحدد دون تفويض: مشكلة صغيرة معلومة المصدر؛ لا
-حاجة لبحث مستقل أو قرار معماري جديد. هذه المرحلة محلية ولم تنشأ لها commit.
+حاجة لبحث مستقل أو قرار معماري جديد. هذه المرحلة رُفعت إلى origin/main في commit 7f15568 بعد نجاح الفحوص.
 
 ### الملفات ومسار البيانات
 
@@ -650,3 +651,181 @@ merchant scope → Prisma transaction → الرد الحالي. العقدان 
    لاحقًا ضمن نطاق منفصل.
 
 Conventional Commit المقترح: `fix(inventory): reject unsupported balance filters`.
+
+
+## 19. تجهيز سجل التدقيق الدائم — 2026-10-09
+
+- طلب المستخدم push ثم التالي؛ رُفع فصل فلاتر الأرصدة إلى GitHub/main:
+  `7f15568 fix(inventory): reject unsupported balance filters`؛ push نجح.
+- لا خريطة Graphify backend قائمة؛ المصدر المرجعي المحدد: ItemsService/
+  StorageLocationsService/UsersService/MerchantsService/AdminMutationService/
+  SecurityAuditService/SessionService وcontrollers/DTO وPrisma schema.
+- التتبع أثبت: Logger الإدارة بعد transaction، ولا نموذج audit دائم؛
+  before الموقع يقرأ قبل قفل الصف، فيجب إعادة قراءته بعد القفل عند التنفيذ.
+- أعد [durable-audit-blueprint.md](durable-audit-blueprint.md) للتصميم والملفات
+  والذريّة والخصوصية والاحتفاظ والتوافق واختبارات rollback/concurrency.
+- القرار المقترح: write داخل transaction، reason مطلوب update/status، snapshots
+  مسموحة بلا أسرار، GET ADMIN فقط، لا حذف تلقائي ولا تاريخ مصطنع، دفاتر
+  المخزون والجرد القائمة مستقلة. يحتاج اعتماد Blueprint قبل implementation.
+- Antigravity: agy models نجح بعد سماح التشغيل المحلي، ثم تفويض بحث read-only
+  إلى gemini-3.7-flash-high عبر agy-delegate من نسخة مصدر فقط في /private/tmp،
+  بلا .env/credentials أو بيانات تشغيل. فشل Individual quota429، بلا تقرير؛
+  لا تكرار للحصة ولا ادعاء independent review. التقرير التقني محفوظ محليًا:
+  /private/tmp/stocked-audit-review-20261009/result/result.json.
+- لم تغير source/schema/migrations في هذه الخطوة؛ لا اختبارات runtime جديدة
+  تدعى. فحوص القراءة وgit diff --check فقط. ملفات التصميم والتقدم محلية
+  بعد push؛ لا deploy أو mutation لقاعدة الإنتاج.
+
+
+## 20. سجل التدقيق الدائم لتعديلات المجال — 2026-10-09
+
+اعتمد المستخدم [durable-audit-blueprint.md](durable-audit-blueprint.md) بعبارة
+«اوك». النطاق backend فقط: إنشاء وتعديل وحالة ITEM/ROW/SHELF/USER/MERCHANT،
+لا تغيير دفاتر المخزون والشحن والمرتجعات والجرد. لا كود أو بيانات Flutter،
+ولا نشر إنتاج أو اعتماديات جديدة. لا commit/push لهذه المرحلة حتى الآن.
+
+### التنفيذ ومسار البيانات
+
+`HTTP reason/DTO → existing role/session/gate → existing locks → actor/before
+snapshots → domain write + session revocation → after snapshot + audit insert
+→ transaction commit → same business response`. أي فشل في إدراج الحدث يلغي
+كتابة المجال وإلغاء الجلسات معًا. لا تسجيل بعد commit ولا catch يخفي الفشل.
+
+- AuditEventWriter يلتقط اسم ودور المستخدم المقفول قبل تغيير نفسه، وينتقي
+  حقول snapshot المحددة فقط. weightKg نص3 خانات؛ before CREATE هو SQL NULL.
+- AdminMutationService وحقوق الأدوار وآخر مدير وإبطال الجلسات وترتيب الأقفال
+  لم تتغير. Items.create يبقى داخل معاملته المباشرة مع gate وإعادة التحقق.
+- لقطة الموقع تقرأ **بعد** قفل target row؛ الاختبار أثبت أنها ترى آخر تغيير
+  committed قبل اكتساب القفل، بدل قراءة الحالة السابقة للانتظار.
+- CREATE لا يطلب سببًا؛ UPDATE/STATUS يتطلب reason trim10..2000. reason فقط
+  ليس تعديلًا صالحًا. no-op ناجح يسجل قبل/بعد متساويين ولا يلغي جلسة بلا حاجة.
+- PostgreSQL يفرض enums/FK/شكل اللقطة وأسماء الحقول وأنواعها وUUIDv4 وdecimal
+  موجب3 خانات/مطابقة target/سبب العملية/دور الفاعل. يمنع UPDATE/DELETE للحدث.
+  Item CREATE ممكن لأدوار ADMIN/WAREHOUSE_KEEPER/EMPLOYEE المصرح لها، والباقي ADMIN.
+- GET audit-events page/detail للADMIN فقط، مع فلاتر فعلية وحدود صفحـات/تواريخ
+  ونماذج Swagger لكل لقطة. anyOf يصف تداخل الحقول بين ROW/SHELF بصورة صحيحة؛
+  null موثق صراحة. لا CRUD كتابة أو حذف للسجل.
+- أزيل recordAdministration Logger بعد استبدال كل نداءاته بالسجل؛ record
+  للمصادقة والbootstrap باقٍ. snapshots لا تحتوي initialPassword/passwordHash/
+  tokens/sessionId؛ بيانات الاسم والبريد والهاتف المقصودة للقراءة الإدارية.
+
+### الملفات والتغييرات بالتفصيل
+
+| الملف | المسؤولية |
+| --- | --- |
+| prisma/schema.prisma | AuditEntityType/AuditAction/AuditEvent وعلاقة Actor/indexes |
+| prisma/migrations/20261009160000_durable_audit/migration.sql | جدول جديد/constraints/function snapshot/immutability؛ لا تعديل لترحيلات قديمة |
+| src/audit-events/audit-event-writer.ts | كتابة داخل transaction موجودة، actor snapshot وallowlist |
+| src/audit-events/audit-events-read.service.ts | read scope ADMIN/page/filter/date bounds وsnapshot قراءة واحدة |
+| src/audit-events/audit-events.controller.ts | GET list/detail وUUID/DTO/Swagger/roles |
+| src/audit-events/audit-events.module.ts | حدود الميزة وexport writer فقط للخدمات |
+| src/audit-events/dto/audit-events-query.dto.ts | المدخلات الفعلية وحدودها |
+| src/audit-events/dto/audit-event-response.dto.ts | الحدث/الصفحة وخمسة تمثيلات snapshot |
+| src/app.module.ts | ربط الميزة |
+| src/items/items.service.ts | CREATE/mutate audit داخل transaction، snapshot بعد الأقفال، فصل reason عن ORM |
+| src/items/items.module.ts | injection عبر AuditEventsModule |
+| src/items/items.controller.ts | تمرير reason لمسار الحالة |
+| src/items/dto/update-item.dto.ts + set-item-status.dto.ts | reason مطلوب validated/Swagger |
+| src/users/users.service.ts | CREATE/UPDATE/STATUS audit ذري مع session revocation وحماية آخر مدير |
+| src/users/users.module.ts + users.controller.ts | wiring وreason لمسار الحالة |
+| src/users/dto/update-user.dto.ts + set-user-status.dto.ts | reason مطلوب |
+| src/merchants/merchants.service.ts | CREATE/UPDATE/STATUS audit مع إبطال جلسات عضوية التاجر ذريًا |
+| src/merchants/merchants.module.ts + merchants.controller.ts | wiring/تمرير السبب |
+| src/merchants/dto/update-merchant.dto.ts + set-merchant-status.dto.ts | reason مطلوب |
+| src/storage-locations/storage-locations.service.ts | تسجيل الصف/الرف، before بعد القفل، STATUS يحفظ الاسم والحالة معًا إذا جمعهما الطلب |
+| src/storage-locations/storage-locations.module.ts | wiring writer |
+| src/storage-locations/dto/storage-location.dto.ts | reason مطلوب في update فقط |
+| src/auth/security-audit.service.ts | إزالة Logger الإدارة بعد نقل التغطية؛ auth telemetry محفوظ |
+| test/audit-events/audit-events.e2e-spec.ts | خمسة اختبارات فعلية للعمليات/الردود/الخصوصية/rollback/concurrency/roles/gate/Swagger |
+| test/database/audit.test.mjs | قواعد معزولة، شكل/هوية/سبب/نوع/UUID/weight/roles/immutable |
+| test/items/items.e2e-spec.ts | أسباب صريحة مع بقاء اختبارات validation/role |
+| test/users/users.e2e-spec.ts | أسباب/direct signature، تحويل Logger spy إلى حدث DB فعلي وخصوصيته |
+| test/merchants/merchants.e2e-spec.ts | أسباب في تعديل/حالة التاجر والمستخدم مع بقاء revocation/race assertions |
+| test/stocktakes/stocktakes.e2e-spec.ts | أسباب في PATCH المواقع/الإدارة، لا تعديل عقود الجرد |
+| test/support/openapi-response.ts | دعم anyOf لفحص union من رد JSON حقيقي؛ test-only |
+| docs/audit-events-api.md | العقد والحقول والتوافق والخصوصية والاحتفاظ والحدود |
+| docs/admin-api.md + items-api.md + storage-locations-api.md | reason الإلزامي واستبدال وصف Logger والأمثلة الحالية |
+| docs/durable-audit-blueprint.md + BACKEND_PROGRESS.md | الاعتماد والتنفيذ والفحوص والمتبقي |
+
+الكلاسات الجديدة محددة: writer كتابة التاريخ؛ read service قراءته؛ controller
+حدود HTTP؛ DTO تمثيل/validation. لا Repository أو middleware أو قاعدة عامة
+شكلية. النماذج المولدة جددت من Prisma7.10.0، ومجلد generated مستبعد من Git
+وفق إعداد الريبو القائم.
+
+### الحالات التي تحققت فعليًا
+
+1. إنشاء/تحديث/no-op/حالة كل الأنواع الخمسة مع السبب trim وbefore/after/time
+   وActor، ورد detail مطابق list؛ nullable descriptors وweightKg3 خانات.
+2. Trigger اختبار يفشل INSERT الحقيقي لـaudit، فألغي تغيير الصنف والصف والرف
+   ودور مستخدم وتعطيل مستخدم وتاجر، وبقيت جلسات المستخدم/التاجر صالحة. إنشاء
+   صنف فاشل لم يترك صفًا؛ لم تنتج أحداث نجاح جزئية.
+3. مدير عدل اسمه: actorNameSnapshot الاسم القديم، وafterSnapshot الاسم الجديد.
+   قفل صف بواسطة اتصال PostgreSQL ثانٍ، ثم PATCH منتظر: before شاهد التعديل
+   الذي commit قبل اكتساب القفل؛ لا لقطة قديمة.
+4. الأدوار غير ADMIN مرفوضة list/detail، reason غائب/null/قصير/فراغ/طويل مرفوض،
+   وفلاتر unknown/enum/UUID/date/حدود page/limit مرفوضة. التصفية المركبة فعلية؛
+   from شامل/to غير شامل. during stocktake PATCH محجوب409 والسجل لا يزيد.
+5. Swagger schema لا يحتوي أسرار، response union مطابق JSON، query exactfields،
+   وكل update/status schemas تطلب reason. DB يمنع حقول credentials زائدة في
+   before أوafter، الهوية المزورة وأنواعJSON غير الملائمة والتعديل/الحذف.
+
+### الفحوص والتطبيق المحلي
+
+- `npx prisma format/validate/generate`: نجحت باستخدام Prisma7.10.0؛ validate
+  أعيد في المراجعة النهائية ونجح.
+- `npm run build`: نجح منفردًا وداخل تشغيل API النهائي.
+- `npm run lint`: نجح؛ أعيد بعد آخر تعديل ونجح.
+- `npm test`:4 اختبارات وحدات نجحت.
+- `npm run test:e2e -- --no-file-parallelism`:162 اختبار API نجحت عبر10 ملفات
+  في108.97 ثانية. خمسة اختبارات API جديدة؛ بقية التغطية القديمة محفوظة.
+- `npm run test:db`:156 اختبار SQL نجحت بلا فشل؛ منها29 في ملف audit الجديد
+  حسب عداد node:test الذي يشمل عنوان المجموعة.
+- `npx prettier --check`:33 ملف TypeScript/اختبار script تغيرت أو أضيفت، نجحت.
+  `git diff --check` وفحص whitespace للملفات الجديدة بلا أخطاء.
+- تشغيل أول API للسجل فشل بسبب عقد طلب الجرد في الاختبار (header/key/status)،
+  وصحح ليستخدم العقد القائم200 وevent.stocktakeId؛ لم يتغير كود الجرد.
+  أول full run بعد دعم anyOf فشل باستيراد ناقص في الاختبار الجديد؛ أضيف
+  الاستيراد، نجحت5 اختبارات السجل وحدها، ثم أعيد full run ونجحت162 كلها.
+- SQL المعزول اختبر كل ترحيلات المشروع من جديد والقيود الجديدة؛ فشل test
+  immutability الأول بسبب transaction aborted في الاختبار، وصحح بـsavepoints
+  ثم نجحت الفحوص. لا فشل متبقٍ مغطى بادعاء نجاح.
+
+**التطبيق المحلي:** الهدف المؤكد127.0.0.1:5432/stocked_dev. أُخذ backup محمي
+0600 في `/private/tmp/stocked-before-durable-audit-20261009.dump` (264289bytes)،
+وتحقق الأرشيف بـpg_restore --list. حالة ما قبل الترحيل كانت ترحيلًا واحدًا
+معلقًا:20261009160000_durable_audit؛ خروج status=1 لهذه الحالة متوقع.
+`npx prisma migrate deploy` نجح، و`npx prisma migrate status` أكد up-to-date
+لـ10 ترحيلات. مقارنة بصمات11 جدول أعمال قبل/بعد تطابقت؛ حساب واحد ومخزنMAIN
+محفوظان، لا أصناف/حركات/أرصدة/تجار/جرد تجريبي أضيفت للتطوير. audit_events=0
+بعد الترحيل؛ لا تاريخ مصطنع. لا reset أو db push أو حذف volumes أو إنتاج.
+
+فحص التشغيل المحلي بعد الترحيل: health200 وSwagger200 ومسار audit-events
+موجود. الفحص قراءة فقط؛ لا أحداث أعمال أضيفت. فحص backup كان بحاجة تصحيح
+مسار dotenv18 المحلي وترتيب البصمات لجدول ذي مفتاح مركب، ثم استخدم Docker
+Compose --env-file /dev/null مع البيئة المحملة لأن الملف.env القائم يحتوي
+صيغة يرفضها Compose؛ لم يعدل .env أو تكوين الحاوية. السكربت المحلي فقط:
+`/private/tmp/stocked-durable-audit-local-migration.mjs`، وبصمات محمية بجانبه.
+هذا backup مؤقت للتطوير وليس إثبات restore/backup دوري للإنتاج.
+
+تفويض داخلي محدود إلى gpt-6-luna لتحديث اختبارات العقود القديمة وكتابة اختبار
+DB فقط؛ راجع primary الفروق والنتائج وأعاد تشغيل الفحوص. قرارات الأمن/المنطق/
+المراجعة النهائية primary. Antigravity quota429 من تجهيز التصميم لم يتكرر؛
+لا ادعاء مراجعة مستقلة ناجحة. لا Graphify backend قائم؛ خريطة Flutter lib-only
+لا تمثل هذا الباك إند، ولم تمس.
+
+### الحدود والناقص بعد هذه المرحلة
+
+- سجل المجال يغطي مسارات الخدمات/API المحددة؛ SQL مباشر خارجها لا يضمن الحدث.
+  FK/constraints/triggers لا تمنع owner من TRUNCATE/DDL أو تعطيلtrigger؛ يلزم
+  grants وفصل runtime/migrations في الإنتاج. لا ادعاء جاهزية إنتاج كاملة.
+- لا حذف تلقائي للأحداث؛ اعتماد retention/backup restore وإعداد logs/security
+  monitoring إنتاجيًا باقٍ. أحداث المصادقة الفاشلة والناجحة الدائمة نطاق منفصل.
+- UUID merchant scope normalization لا يزال يحتاج نطاقًا صغيرًا موحدًا واختبارات
+  لضمان قبول الهوية نفسها رغم اختلاف حالة الحروف، دون إضعاف عزل التجار.
+- صيغة .env المحلية الحالية يرفضها parser الخاص بـDocker Compose؛ تشغيل Prisma
+  وNest الحالي يعمل عبر dotenv. تنظيفها يحتاج حفظ الأسرار وقيمها دون commit؛
+  لم يعدل الملف لأنه خارج Blueprint السجل.
+- TLS/secrets/dependency/security/client-web policy الفعلية، قبول الدورة مع العميل،
+  ثم ربط Flutter لاحقًا؛ لم ينفذ أي منها في نطاق السجل.
+
+Conventional Commit المقترح: `feat(audit): persist transactional domain change history`.

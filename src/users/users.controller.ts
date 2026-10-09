@@ -76,6 +76,6 @@ export class UsersController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body() input: SetUserStatusDto,
   ) {
-    return this.users.setStatus(context, id, input.isActive);
+    return this.users.setStatus(context, id, input.isActive, input.reason);
   }
 }

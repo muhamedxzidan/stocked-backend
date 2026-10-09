@@ -1,3 +1,4 @@
+import { AuditEventWriter } from '../audit-events/audit-event-writer.js';
 import {
   BadRequestException,
   ConflictException,
@@ -24,6 +25,7 @@ import type {
 @Injectable()
 export class StorageLocationsService {
   constructor(
+    @Inject(AuditEventWriter) private readonly audit: AuditEventWriter,
     @Inject(PrismaService) private readonly database: PrismaService,
     @Inject(AdminMutationService)
     private readonly mutations: AdminMutationService,
@@ -48,7 +50,8 @@ export class StorageLocationsService {
         where: { code: 'MAIN' },
       });
       if (!warehouse) throw new NotFoundException('Warehouse not found');
-      return tx.storageRow.create({
+      const actor = await this.audit.actor(tx, context.user.id);
+      const created = await tx.storageRow.create({
         data: {
           warehouseId: warehouse.id,
           code: input.code,
@@ -57,6 +60,8 @@ export class StorageLocationsService {
           createdAt: await this.database.time(tx),
         },
       });
+      await this.audit.append(tx, actor, 'ROW', 'CREATE', null, created, null);
+      return created;
     });
   }
   async createShelf(
@@ -74,7 +79,8 @@ export class StorageLocationsService {
         throw new NotFoundException('Row or merchant not found');
       if (!row.isActive || !merchant.isActive)
         throw new ConflictException('Row and merchant must be active');
-      return tx.storageShelf.create({
+      const actor = await this.audit.actor(tx, context.user.id);
+      const created = await tx.storageShelf.create({
         data: {
           warehouseId: row.warehouseId,
           rowId: row.id,
@@ -85,6 +91,16 @@ export class StorageLocationsService {
           createdAt: await this.database.time(tx),
         },
       });
+      await this.audit.append(
+        tx,
+        actor,
+        'SHELF',
+        'CREATE',
+        null,
+        created,
+        null,
+      );
+      return created;
     });
   }
   async update(
@@ -96,16 +112,17 @@ export class StorageLocationsService {
     if (input.name === undefined && input.isActive === undefined)
       throw new BadRequestException('At least one field is required');
     return this.mutations.run(context, [], async (tx) => {
-      const location =
-        kind === 'ROW'
-          ? await tx.storageRow.findUnique({ where: { id } })
-          : await tx.storageShelf.findUnique({ where: { id } });
-      if (!location) throw new NotFoundException('Location not found');
       // Locks precede checking contents, including transfers and concurrent receipt allocations.
       if (kind === 'ROW')
         await tx.$queryRaw`SELECT id FROM storage_rows WHERE id=${id}::uuid FOR UPDATE`;
       else
         await tx.$queryRaw`SELECT id FROM storage_shelves WHERE id=${id}::uuid FOR UPDATE`;
+      const location =
+        kind === 'ROW'
+          ? await tx.storageRow.findUnique({ where: { id } })
+          : await tx.storageShelf.findUnique({ where: { id } });
+      if (!location) throw new NotFoundException('Location not found');
+      const actor = await this.audit.actor(tx, context.user.id);
       if (input.isActive === false) {
         const shelves =
           kind === 'ROW'
@@ -129,9 +146,24 @@ export class StorageLocationsService {
             'Location contains stock or return custody',
           );
       }
-      return kind === 'ROW'
-        ? tx.storageRow.update({ where: { id }, data: input })
-        : tx.storageShelf.update({ where: { id }, data: input });
+      const data = {
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
+      };
+      const after =
+        kind === 'ROW'
+          ? await tx.storageRow.update({ where: { id }, data })
+          : await tx.storageShelf.update({ where: { id }, data });
+      await this.audit.append(
+        tx,
+        actor,
+        kind,
+        input.isActive === undefined ? 'UPDATE' : 'STATUS',
+        location,
+        after,
+        input.reason,
+      );
+      return after;
     });
   }
   async shelves(context: AuthenticationContext, query: StorageShelvesQueryDto) {

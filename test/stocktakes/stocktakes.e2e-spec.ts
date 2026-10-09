@@ -167,6 +167,17 @@ describe('Stocktake, shelf allocation and global write gate', () => {
       ['rows', rowId],
       ['shelves', shelfId],
     ]) {
+      await request(f.app.getHttpServer())
+        .patch(`/api/v1/storage-locations/${kind}/${id}`)
+        .set('Authorization', `Bearer ${f.token}`)
+        .send({ name: 'Missing reason' })
+        .expect(400);
+      if (kind === 'shelves')
+        await request(f.app.getHttpServer())
+          .patch(`/api/v1/storage-locations/${kind}/${id}`)
+          .set('Authorization', `Bearer ${f.token}`)
+          .send({ isActive: false })
+          .expect(400);
       for (const body of [
         { name: null },
         { isActive: null },
@@ -178,7 +189,7 @@ describe('Stocktake, shelf allocation and global write gate', () => {
         await request(f.app.getHttpServer())
           .patch(`/api/v1/storage-locations/${kind}/${id}`)
           .set('Authorization', `Bearer ${f.token}`)
-          .send(body)
+          .send({ ...body, reason: 'Verified administration change' })
           .expect(400);
       }
     }
@@ -193,7 +204,10 @@ describe('Stocktake, shelf allocation and global write gate', () => {
     await request(f.app.getHttpServer())
       .patch(`/api/v1/storage-locations/shelves/${shelfId}`)
       .set('Authorization', `Bearer ${f.token}`)
-      .send({ name: '  Updated shelf  ' })
+      .send({
+        name: '  Updated shelf  ',
+        reason: 'Verified administration change',
+      })
       .expect(200);
     expect(
       (
@@ -205,7 +219,10 @@ describe('Stocktake, shelf allocation and global write gate', () => {
     await request(f.app.getHttpServer())
       .patch(`/api/v1/storage-locations/rows/${rowId}`)
       .set('Authorization', `Bearer ${keeperToken}`)
-      .send({ name: 'Forbidden change' })
+      .send({
+        name: 'Forbidden change',
+        reason: 'Verified administration change',
+      })
       .expect(403);
   });
 
@@ -889,7 +906,12 @@ describe('Stocktake, shelf allocation and global write gate', () => {
         .map((b: { quantity: number }) => b.quantity)
         .sort(),
     ).toEqual([5, 5]);
-    await f.patch(`/items/${itemId}`, { name: 'After approval' }).expect(200);
+    await f
+      .patch(`/items/${itemId}`, {
+        name: 'After approval',
+        reason: 'Verified administration change',
+      })
+      .expect(200);
   });
   it('posts administrator-only shortages including an explicit zero count', async () => {
     await receipt(3);
@@ -908,7 +930,11 @@ describe('Stocktake, shelf allocation and global write gate', () => {
     const r = await receipt();
     const id = cycleId(await open().expect(200));
     const writes = [
-      () => f.patch(`/items/${itemId}`, { name: 'Blocked' }),
+      () =>
+        f.patch(`/items/${itemId}`, {
+          name: 'Blocked',
+          reason: 'Verified administration change',
+        }),
       () =>
         f.post('/items', {
           merchantId,
@@ -917,12 +943,23 @@ describe('Stocktake, shelf allocation and global write gate', () => {
           color: null,
           weightKg: '1.000',
         }),
-      () => f.patch(`/merchants/${merchantId}`, { name: 'Blocked' }),
-      () => f.patch(`/users/${keeperId}`, { displayName: 'Blocked' }),
+      () =>
+        f.patch(`/merchants/${merchantId}`, {
+          name: 'Blocked',
+          reason: 'Verified administration change',
+        }),
+      () =>
+        f.patch(`/users/${keeperId}`, {
+          displayName: 'Blocked',
+          reason: 'Verified administration change',
+        }),
       () =>
         f.post('/storage-locations/rows', { code: 'BLOCKED', name: 'Blocked' }),
       () =>
-        f.patch(`/storage-locations/shelves/${shelfId}`, { name: 'Blocked' }),
+        f.patch(`/storage-locations/shelves/${shelfId}`, {
+          name: 'Blocked',
+          reason: 'Verified administration change',
+        }),
       () =>
         command('/receipts', {
           merchantId,
@@ -974,7 +1011,10 @@ describe('Stocktake, shelf allocation and global write gate', () => {
     ).rejects.toThrow();
     await cancel(id);
     await f
-      .patch(`/items/${itemId}`, { name: 'After cancellation' })
+      .patch(`/items/${itemId}`, {
+        name: 'After cancellation',
+        reason: 'Verified administration change',
+      })
       .expect(200);
   });
   it('preserves count history and stock when administrator cancels, and forbids reopening the cancelled cycle', async () => {
@@ -1162,7 +1202,10 @@ describe('Stocktake, shelf allocation and global write gate', () => {
     );
     expect(await f.database.stockMovement.count()).toBe(1);
     await f
-      .patch(`/storage-locations/shelves/${shelfId}`, { isActive: false })
+      .patch(`/storage-locations/shelves/${shelfId}`, {
+        isActive: false,
+        reason: 'Verified administration change',
+      })
       .expect(409);
   });
   it('rejects approval without presence confirmation', async () => {

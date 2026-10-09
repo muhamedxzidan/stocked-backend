@@ -6,6 +6,7 @@ import {
 } from '../support/admin-fixture.js';
 
 describe('Merchants administration', () => {
+  const administrationReason = 'Verified administration change';
   let f: Awaited<ReturnType<typeof createAdminFixture>>;
   beforeAll(async () => {
     f = await createAdminFixture();
@@ -25,12 +26,27 @@ describe('Merchants administration', () => {
     expect(body.createdById).toBe(f.adminId);
     expect(await f.database.user.count()).toBe(1);
     await f
-      .patch(`/merchants/${body.id}`, { name: 'Renamed', phone: '001234' })
+      .patch(`/merchants/${body.id}`, { name: 'Missing reason' })
+      .expect(400);
+    await f
+      .patch(`/merchants/${body.id}/status`, { isActive: false })
+      .expect(400);
+    await f
+      .patch(`/merchants/${body.id}`, {
+        name: 'Renamed',
+        phone: '001234',
+        reason: administrationReason,
+      })
       .expect(200);
     expect((await f.get(`/merchants/${body.id}`).expect(200)).body.code).toBe(
       'MZ',
     );
-    await f.patch(`/merchants/${body.id}`, { code: 'ZZ' }).expect(400);
+    await f
+      .patch(`/merchants/${body.id}`, {
+        code: 'ZZ',
+        reason: administrationReason,
+      })
+      .expect(400);
   });
   it('rejects invalid fields, empty patches and nonexistent identifiers', async () => {
     for (const code of ['M', 'M123', 'ABCDEFGHI', 'عربي'])
@@ -41,15 +57,28 @@ describe('Merchants administration', () => {
       .post('/merchants', { ...input, createdById: f.adminId })
       .expect(400);
     const merchant = await f.createMerchant();
-    await f.patch(`/merchants/${merchant.id}`, {}).expect(400);
-    await f.patch(`/merchants/${merchant.id}`, { name: null }).expect(400);
     await f
-      .patch(`/merchants/${merchant.id}/status`, { isActive: 'false' })
+      .patch(`/merchants/${merchant.id}`, { reason: administrationReason })
+      .expect(400);
+    await f
+      .patch(`/merchants/${merchant.id}`, {
+        name: null,
+        reason: administrationReason,
+      })
+      .expect(400);
+    await f
+      .patch(`/merchants/${merchant.id}/status`, {
+        isActive: 'false',
+        reason: administrationReason,
+      })
       .expect(400);
     await f.get('/merchants/bad').expect(400);
     await f.get(`/merchants/${randomUUID()}`).expect(404);
     await f
-      .patch(`/merchants/${randomUUID()}`, { name: 'Missing' })
+      .patch(`/merchants/${randomUUID()}`, {
+        name: 'Missing',
+        reason: administrationReason,
+      })
       .expect(404);
   });
   it('serializes duplicate normalized merchant codes with a safe conflict response', async () => {
@@ -71,15 +100,26 @@ describe('Merchants administration', () => {
     const a = await f.tokenFor(one.id);
     const b = await f.tokenFor(two.id);
     const c = await f.tokenFor(unrelated.id);
-    await f.patch(`/users/${two.id}/status`, { isActive: false }).expect(200);
     await f
-      .patch(`/merchants/${first.id}/status`, { isActive: false })
+      .patch(`/users/${two.id}/status`, {
+        isActive: false,
+        reason: administrationReason,
+      })
+      .expect(200);
+    await f
+      .patch(`/merchants/${first.id}/status`, {
+        isActive: false,
+        reason: administrationReason,
+      })
       .expect(200);
     await f.get('/auth/me', a).expect(401);
     await f.get('/auth/me', b).expect(401);
     await f.get('/auth/me', c).expect(200);
     await f
-      .patch(`/merchants/${first.id}/status`, { isActive: true })
+      .patch(`/merchants/${first.id}/status`, {
+        isActive: true,
+        reason: administrationReason,
+      })
       .expect(200);
     await f.get('/auth/me', a).expect(401);
     await f.get('/auth/me', b).expect(401);
@@ -94,15 +134,22 @@ describe('Merchants administration', () => {
     const merchant = await f.createMerchant();
     const user = await f.createUser('MERCHANT', merchant.id);
     await f
-      .patch(`/merchants/${merchant.id}/status`, { isActive: false })
+      .patch(`/merchants/${merchant.id}/status`, {
+        isActive: false,
+        reason: administrationReason,
+      })
       .expect(200);
     await f
-      .patch(`/users/${user.id}`, { displayName: 'Corrected name' })
+      .patch(`/users/${user.id}`, {
+        displayName: 'Corrected name',
+        reason: administrationReason,
+      })
       .expect(200);
     const staff = await f.createUser();
     await f
       .patch(`/users/${staff.id}`, {
         role: 'MERCHANT',
+        reason: administrationReason,
         merchantId: merchant.id,
       })
       .expect(409);
@@ -116,7 +163,10 @@ describe('Merchants administration', () => {
       .mockRejectedValueOnce(new Error('Simulated revocation failure'));
     try {
       await f
-        .patch(`/merchants/${merchant.id}/status`, { isActive: false })
+        .patch(`/merchants/${merchant.id}/status`, {
+          isActive: false,
+          reason: administrationReason,
+        })
         .expect(500);
     } finally {
       revoke.mockRestore();
@@ -187,7 +237,10 @@ describe('Merchants administration', () => {
     try {
       await verified;
       await f
-        .patch(`/merchants/${merchant.id}/status`, { isActive: false })
+        .patch(`/merchants/${merchant.id}/status`, {
+          isActive: false,
+          reason: administrationReason,
+        })
         .expect(200);
       release();
       expect((await pending).status).toBe(401);
@@ -201,7 +254,10 @@ describe('Merchants administration', () => {
     const first = await f.createMerchant();
     await f.createMerchant('ZZ');
     await f
-      .patch(`/merchants/${first.id}/status`, { isActive: false })
+      .patch(`/merchants/${first.id}/status`, {
+        isActive: false,
+        reason: administrationReason,
+      })
       .expect(200);
     const inactive = await f.get('/merchants?isActive=false').expect(200);
     expect(inactive.body.items.map((item: { id: string }) => item.id)).toEqual([

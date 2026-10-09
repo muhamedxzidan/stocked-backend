@@ -1,3 +1,4 @@
+import { AuditEventsModule } from './audit-events/audit-events.module.js';
 import { StocktakesModule } from './stocktakes/stocktakes.module.js';
 import { StorageLocationsModule } from './storage-locations/storage-locations.module.js';
 import { ItemsModule } from './items/items.module.js';
@@ -13,6 +14,7 @@ import { StockAdjustmentsModule } from './stock-adjustments/stock-adjustments.mo
 import { HealthController } from './health/health.controller.js';
 @Module({
   imports: [
+    AuditEventsModule,
     StocktakesModule,
     StorageLocationsModule,
     AuthModule,

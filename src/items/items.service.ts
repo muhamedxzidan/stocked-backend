@@ -1,3 +1,4 @@
+import { AuditEventWriter } from '../audit-events/audit-event-writer.js';
 import { OperationalWriteGateService } from '../operation-control/operational-write-gate.service.js';
 import {
   BadRequestException,
@@ -20,6 +21,7 @@ import { presentItem } from './item-response.mapper.js';
 @Injectable()
 export class ItemsService {
   constructor(
+    @Inject(AuditEventWriter) private readonly audit: AuditEventWriter,
     @Inject(OperationalWriteGateService)
     private readonly gate: OperationalWriteGateService,
     @Inject(PrismaService) private readonly database: PrismaService,
@@ -42,6 +44,7 @@ export class ItemsService {
         !['ADMIN', 'WAREHOUSE_KEEPER', 'EMPLOYEE'].includes(current.user.role)
       )
         throw new ForbiddenException('Warehouse access required');
+      const actor = await this.audit.actor(transaction, current.user.id);
       const merchant = await this.lockMerchant(transaction, input.merchantId);
       if (!merchant.is_active)
         throw new BadRequestException('Merchant is inactive');
@@ -63,6 +66,15 @@ export class ItemsService {
         },
         select: itemSelection,
       });
+      await this.audit.append(
+        transaction,
+        actor,
+        'ITEM',
+        'CREATE',
+        null,
+        item,
+        null,
+      );
       return presentItem(item);
     });
   }
@@ -130,27 +142,40 @@ export class ItemsService {
     id: string,
     input: UpdateItemDto,
   ) {
-    if (!Object.values(input).some((value) => value !== undefined))
+    if (
+      !Object.entries(input).some(
+        ([key, value]) => key !== 'reason' && value !== undefined,
+      )
+    )
       throw new BadRequestException('At least one field is required');
-    return this.mutate(context, id, {
-      ...(input.name !== undefined ? { name: input.name } : {}),
-      ...(input.brand !== undefined ? { brand: input.brand } : {}),
-      ...(input.color !== undefined ? { color: input.color } : {}),
-      ...(input.weightKg !== undefined ? { weightKg: input.weightKg } : {}),
-      ...(input.notes !== undefined ? { notes: input.notes } : {}),
-    });
+    return this.mutate(
+      context,
+      id,
+      {
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.brand !== undefined ? { brand: input.brand } : {}),
+        ...(input.color !== undefined ? { color: input.color } : {}),
+        ...(input.weightKg !== undefined ? { weightKg: input.weightKg } : {}),
+        ...(input.notes !== undefined ? { notes: input.notes } : {}),
+      },
+      input.reason,
+      'UPDATE',
+    );
   }
   async setStatus(
     context: AuthenticationContext,
     id: string,
     isActive: boolean,
+    reason: string,
   ) {
-    return this.mutate(context, id, { isActive });
+    return this.mutate(context, id, { isActive }, reason, 'STATUS');
   }
   private async mutate(
     context: AuthenticationContext,
     id: string,
     data: Prisma.ItemUpdateInput,
+    reason: string,
+    action: 'UPDATE' | 'STATUS',
   ) {
     return this.mutations.run(context, [], async (transaction) => {
       const item = await transaction.item.findUnique({
@@ -160,13 +185,26 @@ export class ItemsService {
       if (!item) throw new NotFoundException('Item not found');
       await this.lockMerchant(transaction, item.merchantId);
       await transaction.$queryRaw`SELECT id FROM items WHERE id = ${id}::uuid FOR UPDATE`;
-      return presentItem(
-        await transaction.item.update({
-          where: { id },
-          data,
-          select: itemSelection,
-        }),
+      const before = await transaction.item.findUniqueOrThrow({
+        where: { id },
+        select: itemSelection,
+      });
+      const actor = await this.audit.actor(transaction, context.user.id);
+      const after = await transaction.item.update({
+        where: { id },
+        data,
+        select: itemSelection,
+      });
+      await this.audit.append(
+        transaction,
+        actor,
+        'ITEM',
+        action,
+        before,
+        after,
+        reason,
       );
+      return presentItem(after);
     });
   }
   private scope(

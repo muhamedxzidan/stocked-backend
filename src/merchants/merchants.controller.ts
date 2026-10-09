@@ -78,6 +78,6 @@ export class MerchantsController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body() input: SetMerchantStatusDto,
   ) {
-    return this.merchants.setStatus(context, id, input.isActive);
+    return this.merchants.setStatus(context, id, input.isActive, input.reason);
   }
 }

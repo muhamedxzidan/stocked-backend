@@ -6,6 +6,7 @@ import {
 } from '../support/admin-fixture.js';
 
 describe('Users administration', () => {
+  const administrationReason = 'Verified administration change';
   let f: Awaited<ReturnType<typeof createAdminFixture>>;
   beforeAll(async () => {
     f = await createAdminFixture();
@@ -37,9 +38,19 @@ describe('Users administration', () => {
         await f.get(`/${collection}`, token).expect(403);
         await f.get(`/${collection}/${id}`, token).expect(403);
         await f.post(`/${collection}`, {}, token).expect(403);
-        await f.patch(`/${collection}/${id}`, {}, token).expect(403);
         await f
-          .patch(`/${collection}/${id}/status`, { isActive: false }, token)
+          .patch(
+            `/${collection}/${id}`,
+            { reason: administrationReason },
+            token,
+          )
+          .expect(403);
+        await f
+          .patch(
+            `/${collection}/${id}/status`,
+            { isActive: false, reason: administrationReason },
+            token,
+          )
           .expect(403);
       }
     },
@@ -121,7 +132,10 @@ describe('Users administration', () => {
       })
       .expect(404);
     await f
-      .patch(`/merchants/${merchant.id}/status`, { isActive: false })
+      .patch(`/merchants/${merchant.id}/status`, {
+        isActive: false,
+        reason: administrationReason,
+      })
       .expect(200);
     await f
       .post('/users', { ...input(), role: 'MERCHANT', merchantId: merchant.id })
@@ -132,13 +146,26 @@ describe('Users administration', () => {
       .post('/users', { ...input(), initialPassword: 'short' })
       .expect(400);
     await f.post('/users', { ...input(), role: 'OWNER' }).expect(400);
-    await f.patch(`/users/${f.adminId}`, {}).expect(400);
-    await f.patch(`/users/${f.adminId}`, { displayName: null }).expect(400);
     await f
-      .patch(`/users/${f.adminId}`, { initialPassword: fixturePassword })
+      .patch(`/users/${f.adminId}`, { reason: administrationReason })
       .expect(400);
     await f
-      .patch(`/users/${f.adminId}/status`, { isActive: 'false' })
+      .patch(`/users/${f.adminId}`, {
+        displayName: null,
+        reason: administrationReason,
+      })
+      .expect(400);
+    await f
+      .patch(`/users/${f.adminId}`, {
+        initialPassword: fixturePassword,
+        reason: administrationReason,
+      })
+      .expect(400);
+    await f
+      .patch(`/users/${f.adminId}/status`, {
+        isActive: 'false',
+        reason: administrationReason,
+      })
       .expect(400);
     await f.get('/users/not-a-uuid').expect(400);
     await f.get(`/users/${randomUUID()}`).expect(404);
@@ -147,18 +174,31 @@ describe('Users administration', () => {
     const user = await f.createUser();
     const token = await f.tokenFor(user.id);
     await f
-      .patch(`/users/${user.id}`, { displayName: ' Changed ' })
+      .patch(`/users/${user.id}`, { displayName: 'Missing reason' })
+      .expect(400);
+    await f.patch(`/users/${user.id}/status`, { isActive: false }).expect(400);
+    await f
+      .patch(`/users/${user.id}`, {
+        displayName: ' Changed ',
+        reason: administrationReason,
+      })
       .expect(200);
     expect((await f.get('/auth/me', token).expect(200)).body.displayName).toBe(
       'Changed',
     );
     await f
-      .patch(`/users/${user.id}`, { email: 'changed@example.test' })
+      .patch(`/users/${user.id}`, {
+        email: 'changed@example.test',
+        reason: administrationReason,
+      })
       .expect(200);
     await f.get('/auth/me', token).expect(401);
     const fresh = await f.tokenFor(user.id);
     await f
-      .patch(`/users/${user.id}`, { role: 'WAREHOUSE_KEEPER' })
+      .patch(`/users/${user.id}`, {
+        role: 'WAREHOUSE_KEEPER',
+        reason: administrationReason,
+      })
       .expect(200);
     await f.get('/auth/me', fresh).expect(401);
   });
@@ -167,34 +207,80 @@ describe('Users administration', () => {
     const second = await f.createMerchant('ZZ');
     const user = await f.createUser('MERCHANT', first.id);
     const token = await f.tokenFor(user.id);
-    await f.patch(`/users/${user.id}`, { role: 'EMPLOYEE' }).expect(400);
-    await f.patch(`/users/${user.id}`, { merchantId: null }).expect(400);
-    await f.patch(`/users/${user.id}`, { merchantId: second.id }).expect(200);
+    await f
+      .patch(`/users/${user.id}`, {
+        role: 'EMPLOYEE',
+        reason: administrationReason,
+      })
+      .expect(400);
+    await f
+      .patch(`/users/${user.id}`, {
+        merchantId: null,
+        reason: administrationReason,
+      })
+      .expect(400);
+    await f
+      .patch(`/users/${user.id}`, {
+        merchantId: second.id,
+        reason: administrationReason,
+      })
+      .expect(200);
     await f.get('/auth/me', token).expect(401);
     const { body } = await f
-      .patch(`/users/${user.id}`, { role: 'EMPLOYEE', merchantId: null })
+      .patch(`/users/${user.id}`, {
+        role: 'EMPLOYEE',
+        merchantId: null,
+        reason: administrationReason,
+      })
       .expect(200);
     expect(body.merchantId).toBeNull();
     expect(body.role).toBe('EMPLOYEE');
-    await f.patch(`/users/${user.id}`, { role: 'MERCHANT' }).expect(400);
     await f
-      .patch(`/users/${user.id}`, { role: 'MERCHANT', merchantId: first.id })
+      .patch(`/users/${user.id}`, {
+        role: 'MERCHANT',
+        reason: administrationReason,
+      })
+      .expect(400);
+    await f
+      .patch(`/users/${user.id}`, {
+        role: 'MERCHANT',
+        merchantId: first.id,
+        reason: administrationReason,
+      })
       .expect(200);
   });
   it('disable/re-enable never resurrects old sessions', async () => {
     const user = await f.createUser();
     const token = await f.tokenFor(user.id);
-    await f.patch(`/users/${user.id}/status`, { isActive: false }).expect(200);
+    await f
+      .patch(`/users/${user.id}/status`, {
+        isActive: false,
+        reason: administrationReason,
+      })
+      .expect(200);
     await f.get('/auth/me', token).expect(401);
-    await f.patch(`/users/${user.id}/status`, { isActive: true }).expect(200);
+    await f
+      .patch(`/users/${user.id}/status`, {
+        isActive: true,
+        reason: administrationReason,
+      })
+      .expect(200);
     await f.get('/auth/me', token).expect(401);
     await f.get('/auth/me', await f.tokenFor(user.id)).expect(200);
   });
   it('protects the last administrator against disable and demotion', async () => {
     await f
-      .patch(`/users/${f.adminId}/status`, { isActive: false })
+      .patch(`/users/${f.adminId}/status`, {
+        isActive: false,
+        reason: administrationReason,
+      })
       .expect(409);
-    await f.patch(`/users/${f.adminId}`, { role: 'EMPLOYEE' }).expect(409);
+    await f
+      .patch(`/users/${f.adminId}`, {
+        role: 'EMPLOYEE',
+        reason: administrationReason,
+      })
+      .expect(409);
     await f.get('/users').expect(200);
   });
   it.each(['disable', 'demote'])(
@@ -204,7 +290,9 @@ describe('Users administration', () => {
       const secondToken = await f.tokenFor(second.id);
       const suffix = action === 'disable' ? '/status' : '';
       const body =
-        action === 'disable' ? { isActive: false } : { role: 'EMPLOYEE' };
+        action === 'disable'
+          ? { isActive: false, reason: administrationReason }
+          : { role: 'EMPLOYEE', reason: administrationReason };
       const outcomes = await Promise.all([
         f.patch(`/users/${f.adminId}${suffix}`, body),
         f.patch(`/users/${second.id}${suffix}`, body, secondToken),
@@ -227,7 +315,10 @@ describe('Users administration', () => {
       .mockRejectedValueOnce(new Error('Simulated failure'));
     try {
       await f
-        .patch(`/users/${user.id}/status`, { isActive: false })
+        .patch(`/users/${user.id}/status`, {
+          isActive: false,
+          reason: administrationReason,
+        })
         .expect(500);
     } finally {
       revoke.mockRestore();
@@ -243,10 +334,12 @@ describe('Users administration', () => {
     async (change) => {
       const target = await f.createUser();
       const held = await f.holdAdministrationLock();
-      const pending = f.users.setStatus(f.context, target.id, false).then(
-        () => ({ status: 'allowed' }),
-        (error: Error) => ({ status: error.name }),
-      );
+      const pending = f.users
+        .setStatus(f.context, target.id, false, administrationReason)
+        .then(
+          () => ({ status: 'allowed' }),
+          (error: Error) => ({ status: error.name }),
+        );
       try {
         await f.waitForBlockedAdministration();
         if (change === 'role')
@@ -309,11 +402,17 @@ describe('Users administration', () => {
         await verified;
         if (change === 'disable')
           await f
-            .patch(`/users/${user.id}/status`, { isActive: false })
+            .patch(`/users/${user.id}/status`, {
+              isActive: false,
+              reason: administrationReason,
+            })
             .expect(200);
         else
           await f
-            .patch(`/users/${user.id}`, { email: 'replacement@example.test' })
+            .patch(`/users/${user.id}`, {
+              email: 'replacement@example.test',
+              reason: administrationReason,
+            })
             .expect(200);
         release();
         expect((await pending).status).toBe(401);
@@ -338,7 +437,10 @@ describe('Users administration', () => {
       data: { createdAt: new Date('2026-01-01T00:00:00Z') },
     });
     await f
-      .patch(`/users/${users[0].id}/status`, { isActive: false })
+      .patch(`/users/${users[0].id}/status`, {
+        isActive: false,
+        reason: administrationReason,
+      })
       .expect(200);
     const inactive = await f.get('/users?isActive=false').expect(200);
     expect(inactive.body.items.map((user: { id: string }) => user.id)).toEqual([
@@ -372,17 +474,29 @@ describe('Users administration', () => {
     ])
       await f.get(`/users?${query}`).expect(400);
   });
-  it('records successful administration using actor and target identifiers only', async () => {
-    const audit = vi.spyOn(f.audit, 'recordAdministration');
-    try {
-      const { body } = await f.post('/users', input()).expect(201);
-      expect(audit).toHaveBeenCalledWith('user.created', f.adminId, body.id);
-      expect(JSON.stringify(audit.mock.calls)).not.toContain(fixturePassword);
-      expect(JSON.stringify(audit.mock.calls)).not.toContain(
-        'new@example.test',
-      );
-    } finally {
-      audit.mockRestore();
-    }
+  it('persists successful administration with actor and target snapshots', async () => {
+    const { body } = await f.post('/users', input()).expect(201);
+    const events = await f.database.auditEvent.findMany({
+      where: { entityType: 'USER', entityId: body.id, action: 'CREATE' },
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      entityType: 'USER',
+      entityId: body.id,
+      action: 'CREATE',
+      actorId: f.adminId,
+      actorNameSnapshot: expect.any(String),
+      actorRoleSnapshot: 'ADMIN',
+      reason: null,
+      beforeSnapshot: null,
+      afterSnapshot: expect.objectContaining({
+        id: body.id,
+        email: 'new@example.test',
+        displayName: 'New user',
+      }),
+      recordedAt: expect.any(Date),
+    });
+    expect(JSON.stringify(events)).not.toContain(fixturePassword);
+    expect(JSON.stringify(events)).not.toMatch(/passwordHash|initialPassword/);
   });
 });

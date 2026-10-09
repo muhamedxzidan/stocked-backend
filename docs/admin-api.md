@@ -79,15 +79,15 @@ page عدد صحيح من 1 إلى 1000000، وlimit من 1 إلى 100 وافت�
 
 PATCH /users/:id → 200
 
-الحقول المسموحة: email وdisplayName وrole وmerchantId. يجب إرسال حقل واحد على الأقل.
+الحقول التجارية المسموحة: email وdisplayName وrole وmerchantId. يجب إرسال حقل واحد على الأقل، وreason إلزامي بين10 و2000 حرف بعد trim.
 لا يسمح بتعديل isActive أو passwordHash أو initialPassword أو createdById هنا.
 
 ```json
-{ "displayName": "اسم بعد التعديل" }
+{ "displayName": "اسم بعد التعديل", "reason": "تصحيح اسم الحساب بموافقة المدير" }
 ```
 
 ```json
-{ "role": "EMPLOYEE", "merchantId": null }
+{ "role": "EMPLOYEE", "merchantId": null, "reason": "تغيير وظيفة الحساب بموافقة المدير" }
 ```
 
 المثال الثاني ضروري عند نقل حساب من MERCHANT لدور آخر: إزالة ارتباط التاجر يجب أن تكون صريحة.
@@ -103,7 +103,7 @@ PATCH /users/:id → 200
 PATCH /users/:id/status → 200
 
 ```json
-{ "isActive": false }
+{ "isActive": false, "reason": "تعطيل الحساب بناءً على قرار المدير" }
 ```
 
 تعطيل الحساب يبطل كل جلساته في المعاملة نفسها. إعادة التفعيل تستخدم true، ولا تعيد صلاحية أي رمز قديم.
@@ -131,9 +131,9 @@ GET /merchants/:id → بيانات التاجر.
 
 GET /merchants?page=1&limit=25&isActive=false&search=MZ → نفس شكل الصفحات؛ البحث في code وname وphone.
 
-PATCH /merchants/:id → يقبل name وphone فقط. إرسال code أو PATCH فارغ يرفض بـ400، وTrigger القاعدة يظل يمنع تغيير الرمز مباشرة في SQL أيضًا.
+PATCH /merchants/:id → يقبل name وphone مع reason إلزامي. إرسال code أو PATCH فارغ يرفض بـ400، وTrigger القاعدة يظل يمنع تغيير الرمز مباشرة في SQL أيضًا.
 
-PATCH /merchants/:id/status → يقبل isActive boolean.
+PATCH /merchants/:id/status → يقبل isActive boolean مع reason إلزامي.
 تعطيل التاجر يبطل جلسات كل حساباته، دون المساس بحسابات تاجر آخر. حالة isActive الفردية لكل حساب تظل محفوظة.
 إعادة تفعيل التاجر لا تعيد الجلسات القديمة ولا تفعّل مستخدمًا معطلًا فرديًا.
 لا يوجد DELETE للمستخدمين أو التجار؛ السجلات والعلاقات تبقى محفوظة.
@@ -168,11 +168,13 @@ HTTP → Guards → DTO → Controller → UsersService / MerchantsService
 - البروتوكول يفترض أن كل كود كتابة إدارية يستخدم AdminMutationService. تعديل يدوي مباشر في DB يتجاوز قواعد التطبيق؛ حساب تشغيل DB محدود جزء من إعداد الإنتاج.
 - القفل المشترك مناسب لحجم الإدارة الحالي. لا تستخدمه لحركات المخزون المستقبلية؛ لها قفل معاملات وتصميمها الخاص.
 
-## سجل الأمان
+## سجل التدقيق الدائم
 
-الأحداث: user.created، user.updated، user.role_changed، user.enabled، user.disabled، merchant.created، merchant.updated، merchant.enabled، merchant.disabled.
-تسجل بعد نجاح المعاملة مع actorId وtargetId فقط، دون كلمة مرور أو بريد أو token أو body الطلب.
-هذه logs أمنية وليست دفتر تدقيق دائمًا لكل تغيير قيمة. دفتر حركات المخزون غير القابل للتعديل والإعداد التشغيلي لحفظ logs مرحلتان لاحقتان.
+إنشاء/تعديل/حالة المستخدمين والتجار يسجل في audit_events داخل معاملة الأعمال
+بنفسها، مع before/after والسبب والفاعل ووقت الخادم. فشل كتابة الحدث يلغي
+التعديل وإبطال الجلسات. لا Logger إدارة بعد commit؛ logs المصادقة تبقى
+منفصلة. قراءة الأحداث ADMIN فقط. راجع [العقد الكامل](audit-events-api.md)
+للفلاتر والحقول والاحتفاظ وحدود حماية مالك قاعدة البيانات.
 
 ## التحقق والمراجعة
 

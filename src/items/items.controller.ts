@@ -103,6 +103,6 @@ export class ItemsController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body() input: SetItemStatusDto,
   ) {
-    return this.items.setStatus(context, id, input.isActive);
+    return this.items.setStatus(context, id, input.isActive, input.reason);
   }
 }

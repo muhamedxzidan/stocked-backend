@@ -7,6 +7,7 @@ import { ItemCodeService } from '../../dist/items/item-code.service.js';
 import { createAdminFixture } from '../support/admin-fixture.js';
 
 describe('Items catalog', () => {
+  const administrationReason = 'Verified administration change';
   let f: Awaited<ReturnType<typeof createAdminFixture>>;
   let merchantId: string;
   let service: ItemsService;
@@ -111,10 +112,18 @@ describe('Items catalog', () => {
       );
       const token = await f.tokenFor(actor.id);
       await f
-        .patch(`/items/${entry.id}`, { name: 'Changed' }, token)
+        .patch(
+          `/items/${entry.id}`,
+          { name: 'Changed', reason: administrationReason },
+          token,
+        )
         .expect(403);
       await f
-        .patch(`/items/${entry.id}/status`, { isActive: false }, token)
+        .patch(
+          `/items/${entry.id}/status`,
+          { isActive: false, reason: administrationReason },
+          token,
+        )
         .expect(403);
       if (role === 'MERCHANT')
         await f.post('/items', input(), token).expect(403);
@@ -229,6 +238,8 @@ describe('Items catalog', () => {
   });
   it('updates descriptors without changing identity and deactivates without deleting', async () => {
     const entry = await item();
+    await f.patch(`/items/${entry.id}`, { name: 'Missing reason' }).expect(400);
+    await f.patch(`/items/${entry.id}/status`, { isActive: false }).expect(400);
     const changed = (
       await f
         .patch(`/items/${entry.id}`, {
@@ -237,6 +248,7 @@ describe('Items catalog', () => {
           color: 'Red',
           weightKg: '1.125',
           notes: null,
+          reason: administrationReason,
         })
         .expect(200)
     ).body;
@@ -262,14 +274,26 @@ describe('Items catalog', () => {
       { weightKg: '1.2345' },
       {},
     ])
-      await f.patch(`/items/${entry.id}`, extra).expect(400);
-    await f.patch(`/items/${entry.id}/status`, { isActive: false }).expect(200);
+      await f
+        .patch(`/items/${entry.id}`, { ...extra, reason: administrationReason })
+        .expect(400);
+    await f
+      .patch(`/items/${entry.id}/status`, {
+        isActive: false,
+        reason: administrationReason,
+      })
+      .expect(200);
     expect((await f.get('/items?isActive=false').expect(200)).body.total).toBe(
       1,
     );
     await f.get(`/items/${entry.id}`).expect(200);
     expect((await item()).code).toBe('MZ-000002');
-    await f.patch(`/items/${entry.id}/status`, { isActive: true }).expect(200);
+    await f
+      .patch(`/items/${entry.id}/status`, {
+        isActive: true,
+        reason: administrationReason,
+      })
+      .expect(200);
   });
   it('filters and paginates consistently and validates filters', async () => {
     await item();
@@ -406,7 +430,10 @@ describe('Items catalog', () => {
   });
   it('does not create for an inactive merchant', async () => {
     await f
-      .patch(`/merchants/${merchantId}/status`, { isActive: false })
+      .patch(`/merchants/${merchantId}/status`, {
+        isActive: false,
+        reason: administrationReason,
+      })
       .expect(200);
     await f.post('/items', input()).expect(400);
     expect(await f.database.itemCodeSequence.count()).toBe(0);

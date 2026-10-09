@@ -8,7 +8,7 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { AdminMutationService } from '../auth/admin-mutation.service.js';
 import { SessionService } from '../auth/session.service.js';
-import { SecurityAuditService } from '../auth/security-audit.service.js';
+import { AuditEventWriter } from '../audit-events/audit-event-writer.js';
 import type { AuthenticationContext } from '../auth/authenticated-user.js';
 import type { CreateMerchantDto } from './dto/create-merchant.dto.js';
 import type { UpdateMerchantDto } from './dto/update-merchant.dto.js';
@@ -22,25 +22,35 @@ export class MerchantsService {
     @Inject(AdminMutationService)
     private readonly mutations: AdminMutationService,
     @Inject(SessionService) private readonly sessions: SessionService,
-    @Inject(SecurityAuditService) private readonly audit: SecurityAuditService,
+    @Inject(AuditEventWriter) private readonly audit: AuditEventWriter,
   ) {}
 
   async create(context: AuthenticationContext, input: CreateMerchantDto) {
-    const merchant = await this.mutations.run(context, [], (transaction) =>
-      transaction.merchant.create({
-        data: {
-          code: input.code.trim().toUpperCase(),
-          name: input.name.trim(),
-          phone: input.phone.trim(),
-          createdById: context.user.id,
-        },
-        select: merchantSelection,
-      }),
-    );
-    this.audit.recordAdministration(
-      'merchant.created',
-      context.user.id,
-      merchant.id,
+    const merchant = await this.mutations.run(
+      context,
+      [],
+      async (transaction) => {
+        const actor = await this.audit.actor(transaction, context.user.id);
+        const created = await transaction.merchant.create({
+          data: {
+            code: input.code.trim().toUpperCase(),
+            name: input.name.trim(),
+            phone: input.phone.trim(),
+            createdById: context.user.id,
+          },
+          select: merchantSelection,
+        });
+        await this.audit.append(
+          transaction,
+          actor,
+          'MERCHANT',
+          'CREATE',
+          null,
+          created,
+          null,
+        );
+        return created;
+      },
     );
     return merchant;
   }
@@ -88,20 +98,23 @@ export class MerchantsService {
     id: string,
     input: UpdateMerchantDto,
   ) {
-    if (!Object.values(input).some((value) => value !== undefined))
+    if (
+      !Object.entries(input).some(
+        ([key, value]) => key !== 'reason' && value !== undefined,
+      )
+    )
       throw new BadRequestException('At least one field is required');
     const merchant = await this.mutations.run(
       context,
       [],
       async (transaction) => {
-        if (
-          !(await transaction.merchant.findUnique({
-            where: { id },
-            select: { id: true },
-          }))
-        )
-          throw new NotFoundException('Merchant not found');
-        return transaction.merchant.update({
+        const current = await transaction.merchant.findUnique({
+          where: { id },
+          select: merchantSelection,
+        });
+        if (!current) throw new NotFoundException('Merchant not found');
+        const actor = await this.audit.actor(transaction, context.user.id);
+        const updated = await transaction.merchant.update({
           where: { id },
           data: {
             ...(input.name !== undefined ? { name: input.name.trim() } : {}),
@@ -109,9 +122,18 @@ export class MerchantsService {
           },
           select: merchantSelection,
         });
+        await this.audit.append(
+          transaction,
+          actor,
+          'MERCHANT',
+          'UPDATE',
+          current,
+          updated,
+          input.reason,
+        );
+        return updated;
       },
     );
-    this.audit.recordAdministration('merchant.updated', context.user.id, id);
     return merchant;
   }
 
@@ -119,6 +141,7 @@ export class MerchantsService {
     context: AuthenticationContext,
     id: string,
     isActive: boolean,
+    reason: string,
   ) {
     // Resolve membership only after the global administration lock has been taken.
     let accountIds: string[] = [];
@@ -134,13 +157,12 @@ export class MerchantsService {
         return accountIds;
       },
       async (transaction) => {
-        if (
-          !(await transaction.merchant.findUnique({
-            where: { id },
-            select: { id: true },
-          }))
-        )
-          throw new NotFoundException('Merchant not found');
+        const current = await transaction.merchant.findUnique({
+          where: { id },
+          select: merchantSelection,
+        });
+        if (!current) throw new NotFoundException('Merchant not found');
+        const actor = await this.audit.actor(transaction, context.user.id);
         const updated = await transaction.merchant.update({
           where: { id },
           data: { isActive },
@@ -148,13 +170,17 @@ export class MerchantsService {
         });
         if (!isActive)
           await this.sessions.revokeForUsers(transaction, accountIds);
+        await this.audit.append(
+          transaction,
+          actor,
+          'MERCHANT',
+          'STATUS',
+          current,
+          updated,
+          reason,
+        );
         return updated;
       },
-    );
-    this.audit.recordAdministration(
-      isActive ? 'merchant.enabled' : 'merchant.disabled',
-      context.user.id,
-      id,
     );
     return merchant;
   }

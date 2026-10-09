@@ -23,6 +23,18 @@ export function expectOpenApiResponse(
     expectOpenApiResponse(document, target, value);
     return;
   }
+  if (schema.anyOf) {
+    const matches = schema.anyOf.some((child) => {
+      try {
+        expectOpenApiResponse(document, child, value);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    expect(matches, 'No published union variant matches response').toBe(true);
+    return;
+  }
   if (schema.allOf) {
     for (const child of schema.allOf)
       expectOpenApiResponse(document, child, value);

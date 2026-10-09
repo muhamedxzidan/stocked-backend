@@ -10,7 +10,7 @@ import { PrismaService } from '../database/prisma.service.js';
 import { AdminMutationService } from '../auth/admin-mutation.service.js';
 import { PasswordService } from '../auth/password.service.js';
 import { SessionService } from '../auth/session.service.js';
-import { SecurityAuditService } from '../auth/security-audit.service.js';
+import { AuditEventWriter } from '../audit-events/audit-event-writer.js';
 import type { AuthenticationContext } from '../auth/authenticated-user.js';
 import type { CreateUserDto } from './dto/create-user.dto.js';
 import type { UpdateUserDto } from './dto/update-user.dto.js';
@@ -25,7 +25,7 @@ export class UsersService {
     private readonly mutations: AdminMutationService,
     @Inject(PasswordService) private readonly passwords: PasswordService,
     @Inject(SessionService) private readonly sessions: SessionService,
-    @Inject(SecurityAuditService) private readonly audit: SecurityAuditService,
+    @Inject(AuditEventWriter) private readonly audit: AuditEventWriter,
   ) {}
 
   async create(context: AuthenticationContext, input: CreateUserDto) {
@@ -33,7 +33,8 @@ export class UsersService {
     const user = await this.mutations.run(context, [], async (transaction) => {
       const merchantId = input.merchantId ?? null;
       await this.validateMerchant(transaction, input.role, merchantId);
-      return transaction.user.create({
+      const actor = await this.audit.actor(transaction, context.user.id);
+      const created = await transaction.user.create({
         data: {
           email: input.email.trim().toLowerCase(),
           displayName: input.displayName.trim(),
@@ -45,8 +46,17 @@ export class UsersService {
         },
         select: userSelection,
       });
+      await this.audit.append(
+        transaction,
+        actor,
+        'USER',
+        'CREATE',
+        null,
+        created,
+        null,
+      );
+      return created;
     });
-    this.audit.recordAdministration('user.created', context.user.id, user.id);
     return user;
   }
 
@@ -96,7 +106,11 @@ export class UsersService {
     id: string,
     input: UpdateUserDto,
   ) {
-    if (!Object.values(input).some((value) => value !== undefined))
+    if (
+      !Object.entries(input).some(
+        ([key, value]) => key !== 'reason' && value !== undefined,
+      )
+    )
       throw new BadRequestException('At least one field is required');
     const result = await this.mutations.run(
       context,
@@ -133,6 +147,7 @@ export class UsersService {
           role,
           current.isActive,
         );
+        const actor = await this.audit.actor(transaction, context.user.id);
         const user = await transaction.user.update({
           where: { id },
           data: {
@@ -151,21 +166,26 @@ export class UsersService {
           merchantId !== current.merchantId
         )
           await this.sessions.revokeForUsers(transaction, [id]);
-        return { user, roleChanged: role !== current.role };
+        await this.audit.append(
+          transaction,
+          actor,
+          'USER',
+          'UPDATE',
+          current,
+          user,
+          input.reason,
+        );
+        return user;
       },
     );
-    this.audit.recordAdministration(
-      result.roleChanged ? 'user.role_changed' : 'user.updated',
-      context.user.id,
-      id,
-    );
-    return result.user;
+    return result;
   }
 
   async setStatus(
     context: AuthenticationContext,
     id: string,
     isActive: boolean,
+    reason: string,
   ) {
     const user = await this.mutations.run(
       context,
@@ -182,19 +202,24 @@ export class UsersService {
           current.role,
           isActive,
         );
+        const actor = await this.audit.actor(transaction, context.user.id);
         const updated = await transaction.user.update({
           where: { id },
           data: { isActive },
           select: userSelection,
         });
         if (!isActive) await this.sessions.revokeForUsers(transaction, [id]);
+        await this.audit.append(
+          transaction,
+          actor,
+          'USER',
+          'STATUS',
+          current,
+          updated,
+          reason,
+        );
         return updated;
       },
-    );
-    this.audit.recordAdministration(
-      isActive ? 'user.enabled' : 'user.disabled',
-      context.user.id,
-      id,
     );
     return user;
   }

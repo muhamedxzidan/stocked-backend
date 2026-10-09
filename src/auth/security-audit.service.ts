@@ -14,20 +14,4 @@ export class SecurityAuditService {
   ): void {
     this.logger.log(JSON.stringify({ event, ...(userId ? { userId } : {}) }));
   }
-  recordAdministration(
-    event:
-      | 'user.created'
-      | 'user.updated'
-      | 'user.role_changed'
-      | 'user.enabled'
-      | 'user.disabled'
-      | 'merchant.created'
-      | 'merchant.updated'
-      | 'merchant.enabled'
-      | 'merchant.disabled',
-    actorId: string,
-    targetId: string,
-  ): void {
-    this.logger.log(JSON.stringify({ event, actorId, targetId }));
-  }
 }

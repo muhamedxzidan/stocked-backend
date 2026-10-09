@@ -36,6 +36,7 @@ model User {
   createdMerchants          Merchant[]            @relation("MerchantCreator")
   receivedReceipts          Receipt[]             @relation("ReceiptReceiver")
   performedStockAdjustments StockAdjustment[]     @relation("AdjustmentActor")
+  auditEvents               AuditEvent[]
   sessions                  Session[]
   createdItems              Item[]                @relation("ItemCreator")
   stockMovements            StockMovement[]
@@ -813,4 +814,42 @@ model ReturnCustodyTransfer {
   requestHash       String   @map("request_hash") @db.Char(64)
 
   @@map("return_custody_transfers")
+}
+
+enum AuditEntityType {
+  ITEM
+  ROW
+  SHELF
+  USER
+  MERCHANT
+
+  @@map("audit_entity_type")
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  STATUS
+
+  @@map("audit_action")
+}
+
+model AuditEvent {
+  id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entityType        AuditEntityType @map("entity_type")
+  entityId          String          @map("entity_id") @db.Uuid
+  action            AuditAction
+  actorId           String          @map("actor_id") @db.Uuid
+  actorNameSnapshot String          @map("actor_name_snapshot") @db.VarChar(150)
+  actorRoleSnapshot UserRole        @map("actor_role_snapshot")
+  recordedAt        DateTime        @map("recorded_at") @db.Timestamptz(3)
+  reason            String?         @db.VarChar(2000)
+  beforeSnapshot    Json?           @map("before_snapshot") @db.JsonB
+  afterSnapshot     Json            @map("after_snapshot") @db.JsonB
+  actor             User            @relation(fields: [actorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([recordedAt, id])
+  @@index([entityType, entityId, recordedAt])
+  @@index([actorId, recordedAt])
+  @@map("audit_events")
 }
