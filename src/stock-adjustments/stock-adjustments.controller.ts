@@ -39,7 +39,7 @@ export class StockAdjustmentsController {
     private readonly adjustments: StockAdjustmentsService,
   ) {}
   @Post()
-  @Roles(UserRole.ADMIN, UserRole.WAREHOUSE_KEEPER)
+  @Roles(UserRole.ADMIN)
   @ApiCreatedResponse()
   async create(
     @CurrentAuthentication() context: AuthenticationContext,

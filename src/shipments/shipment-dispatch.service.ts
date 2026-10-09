@@ -1,3 +1,5 @@
+import { canonicalItemShelfAllocations } from '../inventory/stock-placement-input.js';
+import { StockPlacementService } from '../inventory/stock-placement.service.js';
 import {
   ConflictException,
   Inject,
@@ -16,6 +18,8 @@ import { dispatchSelect, shipmentWriterRoles } from './shipment-select.js';
 @Injectable()
 export class ShipmentDispatchService {
   constructor(
+    @Inject(StockPlacementService)
+    private readonly placements: StockPlacementService,
     @Inject(PrismaService) private readonly database: PrismaService,
     @Inject(StockMutationService)
     private readonly mutations: StockMutationService,
@@ -33,6 +37,7 @@ export class ShipmentDispatchService {
       shipmentId,
       carrierName: input.carrierName.trim(),
       trackingNumber: input.trackingNumber.trim(),
+      placements: canonicalItemShelfAllocations(input.placements),
     };
     const requestHash = shipmentHash(canonical);
     return this.mutations.run(
@@ -144,7 +149,7 @@ export class ShipmentDispatchService {
           },
           select: dispatchSelect,
         });
-        await tx.stockMovement.createMany({
+        const movements = await tx.stockMovement.createManyAndReturn({
           data: shipment.lines.map((line) => ({
             warehouseId: warehouse.id,
             merchantId: shipment.merchantId,
@@ -160,6 +165,22 @@ export class ShipmentDispatchService {
             shipmentDispatchId: dispatch.id,
           })),
         });
+        if (
+          input.placements?.some(
+            (p) => !itemIds.includes(p.itemId.toLowerCase()),
+          )
+        )
+          throw new ConflictException(
+            'Allocation item does not belong to shipment',
+          );
+        for (const movement of movements)
+          await this.placements.allocateMovement(
+            tx,
+            movement,
+            input.placements?.filter(
+              (p) => p.itemId.toLowerCase() === movement.itemId,
+            ),
+          );
         await this.posting.apply(tx, balances, deltas, dispatchedAt);
         return { replayed: false, dispatch };
       },

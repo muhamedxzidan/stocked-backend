@@ -1,3 +1,6 @@
+import { canonicalShelfAllocations } from '../inventory/stock-placement-input.js';
+import { ReturnCustodyPlacementService } from '../inventory/return-custody-placement.service.js';
+import { StockPlacementService } from '../inventory/stock-placement.service.js';
 import {
   BadRequestException,
   ConflictException,
@@ -16,6 +19,10 @@ import { lockReturnItems, lockReturnReceipt } from './return-source.js';
 @Injectable()
 export class ReturnInspectionService {
   constructor(
+    @Inject(ReturnCustodyPlacementService)
+    private readonly custody: ReturnCustodyPlacementService,
+    @Inject(StockPlacementService)
+    private readonly placements: StockPlacementService,
     @Inject(PrismaService) private readonly database: PrismaService,
     @Inject(StockMutationService)
     private readonly mutations: StockMutationService,
@@ -37,6 +44,8 @@ export class ReturnInspectionService {
         condition: l.condition,
         issueType: l.issueType ?? null,
         notes: l.notes?.trim() || null,
+        placements: canonicalShelfAllocations(l.placements),
+        custodySources: canonicalShelfAllocations(l.custodySources),
       })),
     };
     const classes = new Set<string>();
@@ -48,6 +57,13 @@ export class ReturnInspectionService {
       )
         throw new BadRequestException(
           'GOOD has no issues; NOTED requires issue and precise notes of at least 10 characters',
+        );
+      if (
+        line.condition === 'NOTED' &&
+        (line.placements || line.custodySources)
+      )
+        throw new BadRequestException(
+          'Pending groups cannot include stock allocations',
         );
       const classification = `${line.receiptLineId}:${line.condition}:${line.issueType ?? ''}`;
       if (classes.has(classification))
@@ -170,8 +186,8 @@ export class ReturnInspectionService {
           select: inspectionSelect,
         });
         const good = inspection.lines.filter((g) => g.condition === 'GOOD');
-        if (good.length)
-          await tx.stockMovement.createMany({
+        if (good.length) {
+          const movements = await tx.stockMovement.createManyAndReturn({
             data: good.map((g) => {
               const source = receipt.lines.find(
                 (l) => l.id === g.receiptLineId,
@@ -191,6 +207,23 @@ export class ReturnInspectionService {
               };
             }),
           });
+          for (const movement of movements) {
+            const saved = inspection.lines.find(
+              (g) => g.id === movement.returnInspectionLineId,
+            )!;
+            const requested = input.lines[saved.position - 1];
+            await this.placements.allocateMovement(
+              tx,
+              movement,
+              requested.placements,
+            );
+            await this.custody.release(
+              tx,
+              movement,
+              requested.custodySources ?? requested.placements,
+            );
+          }
+        }
         if (balances)
           await this.posting.apply(tx, balances, deltas, inspectedAt);
         return { replayed: false, inspection };

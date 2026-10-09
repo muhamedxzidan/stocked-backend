@@ -1,3 +1,4 @@
+import { OperationalWriteGateService } from '../operation-control/operational-write-gate.service.js';
 import { ForbiddenException, Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
@@ -11,6 +12,8 @@ type AffectedUsers =
 @Injectable()
 export class AdminMutationService {
   constructor(
+    @Inject(OperationalWriteGateService)
+    private readonly gate: OperationalWriteGateService,
     @Inject(PrismaService) private readonly database: PrismaService,
     @Inject(SessionService) private readonly sessions: SessionService,
   ) {}
@@ -21,6 +24,7 @@ export class AdminMutationService {
     operation: (transaction: Prisma.TransactionClient) => Promise<T>,
   ): Promise<T> {
     return this.database.$transaction(async (transaction) => {
+      await this.gate.enter(transaction);
       // All identity administration writes serialize here, before any user locks.
       await transaction.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(847312, 2)`;
       const targets =

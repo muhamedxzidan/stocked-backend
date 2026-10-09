@@ -88,6 +88,7 @@ npm run test:db
 
 ## المستندات
 
+- [حالة التنفيذ الكاملة وخطة الاستكمال](docs/BACKEND_PROGRESS.md) — ابدأ به عند العودة للمشروع.
 - [تصميم قاعدة البيانات](docs/database-design.md)
 - [سياسة الأمان](docs/auth-security-policy.md)
 - [بلوبرنت التنفيذ ومراحل الاستكمال](docs/auth-implementation-blueprint.md)

@@ -1,3 +1,5 @@
+import { canonicalShelfAllocations } from '../inventory/stock-placement-input.js';
+import { ReturnCustodyPlacementService } from '../inventory/return-custody-placement.service.js';
 import {
   BadRequestException,
   ConflictException,
@@ -15,6 +17,8 @@ import { lockReturnItems, lockReturnShipment } from './return-source.js';
 @Injectable()
 export class ReturnReceivingService {
   constructor(
+    @Inject(ReturnCustodyPlacementService)
+    private readonly custody: ReturnCustodyPlacementService,
     @Inject(PrismaService) private readonly database: PrismaService,
     @Inject(StockMutationService)
     private readonly mutations: StockMutationService,
@@ -32,6 +36,7 @@ export class ReturnReceivingService {
       lines: input.lines.map((l) => ({
         shipmentLineId: l.shipmentLineId.toLowerCase(),
         quantity: l.quantity,
+        placements: canonicalShelfAllocations(l.placements),
       })),
     };
     if (
@@ -146,6 +151,12 @@ export class ReturnReceivingService {
           },
           select: returnReceiptSelect,
         });
+        for (const line of receipt.lines)
+          await this.custody.receive(
+            tx,
+            line.id,
+            input.lines[line.position - 1].placements,
+          );
         return { replayed: false, receipt };
       },
     );

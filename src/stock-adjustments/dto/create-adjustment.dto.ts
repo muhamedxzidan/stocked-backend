@@ -1,17 +1,32 @@
-import { Transform } from 'class-transformer';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform, Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
   IsEnum,
   IsInt,
+  IsOptional,
   IsString,
   IsUUID,
   Max,
   MaxLength,
   Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { ShelfQuantityDto } from '../../inventory/dto/stock-placement.dto.js';
 import { StockAdjustmentDirection } from '../../generated/prisma/client.js';
 export class CreateAdjustmentDto {
+  @ApiPropertyOptional({ type: [ShelfQuantityDto] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => ShelfQuantityDto)
+  placements?: ShelfQuantityDto[];
+
   @ApiProperty({ format: 'uuid' }) @IsUUID('4') referenceMovementId!: string;
   @ApiProperty({ enum: StockAdjustmentDirection })
   @IsEnum(StockAdjustmentDirection)

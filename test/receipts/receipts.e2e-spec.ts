@@ -12,10 +12,10 @@ describe('Receipts and stock ledger', () => {
   }, 30000);
   beforeEach(async () => {
     await f.reset();
-    const merchant = await f.createMerchant();
+    const merchant = await f.createLocatedMerchant();
     merchantId = merchant.id;
     const response = await f
-      .post('/items', {
+      .stockPost('/items', {
         merchantId,
         name: 'Test item',
         brand: null,
@@ -41,7 +41,7 @@ describe('Receipts and stock ledger', () => {
     lines: [{ itemId, quantity, condition: 'GOOD' }, notedLine(2)],
   });
   const receive = (body: object, key = randomUUID(), token = f.token) =>
-    f.post('/receipts', body, token).set('Idempotency-Key', key);
+    f.stockPost('/receipts', body, token).set('Idempotency-Key', key);
 
   it('records actor, server time, noted defects, ledger movement and total quantity atomically', async () => {
     const employee = await f.createUser('EMPLOYEE');
@@ -150,17 +150,21 @@ describe('Receipts and stock ledger', () => {
       reason: 'تم تسجيل خمس قطع بالخطأ والكمية الفعلية ثلاث',
     };
     await f
-      .post('/stock-adjustments', adjustment, employeeToken)
+      .stockPost('/stock-adjustments', adjustment, employeeToken)
       .set('Idempotency-Key', randomUUID())
       .expect(403);
     const keeper = await f.createUser('WAREHOUSE_KEEPER');
     const keeperToken = await f.tokenFor(keeper.id);
+    await f
+      .stockPost('/stock-adjustments', adjustment, keeperToken)
+      .set('Idempotency-Key', randomUUID())
+      .expect(403);
     const { body: change } = await f
-      .post('/stock-adjustments', adjustment, keeperToken)
+      .stockPost('/stock-adjustments', adjustment)
       .set('Idempotency-Key', randomUUID())
       .expect(201);
-    expect(change.performedById).toBe(keeper.id);
-    expect(change.performedByNameSnapshot).toBe(keeper.displayName);
+    expect(change.performedById).toBe(f.adminId);
+    expect(change.performedByNameSnapshot).toBe('Administrator');
     expect(Date.parse(change.recordedAt)).toBeGreaterThan(0);
     expect(change.quantityDelta).toBe(-2);
     expect((await f.get(`/balances/${itemId}`).expect(200)).body.quantity).toBe(
@@ -168,7 +172,7 @@ describe('Receipts and stock ledger', () => {
     );
     const tooMuch = { ...adjustment, quantity: 4 };
     await f
-      .post('/stock-adjustments', tooMuch, keeperToken)
+      .stockPost('/stock-adjustments', tooMuch)
       .set('Idempotency-Key', randomUUID())
       .expect(409);
     expect((await f.get(`/balances/${itemId}`).expect(200)).body.quantity).toBe(
@@ -177,10 +181,10 @@ describe('Receipts and stock ledger', () => {
   });
 
   it('keeps merchant receipt, balance and movement reads within its own merchant boundary', async () => {
-    const otherMerchant = await f.createMerchant('ZZ');
+    const otherMerchant = await f.createLocatedMerchant('ZZ');
     const otherItem = (
       await f
-        .post('/items', {
+        .stockPost('/items', {
           merchantId: otherMerchant.id,
           name: 'Other item',
           brand: null,

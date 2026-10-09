@@ -1,3 +1,4 @@
+import { OperationalWriteGateService } from '../operation-control/operational-write-gate.service.js';
 import {
   ForbiddenException,
   Inject,
@@ -12,6 +13,8 @@ import { PrismaService } from '../database/prisma.service.js';
 @Injectable()
 export class StockMutationService {
   constructor(
+    @Inject(OperationalWriteGateService)
+    private readonly gate: OperationalWriteGateService,
     @Inject(PrismaService) private readonly database: PrismaService,
     @Inject(SessionService) private readonly sessions: SessionService,
   ) {}
@@ -19,6 +22,8 @@ export class StockMutationService {
   async run<T>(
     context: AuthenticationContext,
     operation:
+      | 'placement_transfer'
+      | 'custody_transfer'
       | 'receipt'
       | 'adjustment'
       | 'shipment_register'
@@ -38,6 +43,7 @@ export class StockMutationService {
       try {
         return await this.database.$transaction(
           async (transaction) => {
+            await this.gate.enter(transaction);
             // The stable warehouse code is part of the lock identity; key reuse
             // across receipts and adjustments must remain independent.
             await transaction.$executeRaw`SELECT pg_advisory_xact_lock(847313, hashtext(${`${operation}:MAIN:${key}`}))`;

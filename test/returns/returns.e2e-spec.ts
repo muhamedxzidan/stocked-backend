@@ -16,10 +16,10 @@ describe('Returns custody, inspection and restocking', () => {
   }, 30000);
   beforeEach(async () => {
     await f.reset();
-    merchantId = (await f.createMerchant()).id;
+    merchantId = (await f.createLocatedMerchant()).id;
     itemId = (
       await f
-        .post('/items', {
+        .stockPost('/items', {
           merchantId,
           name: 'Return item',
           brand: null,
@@ -29,24 +29,27 @@ describe('Returns custody, inspection and restocking', () => {
         .expect(201)
     ).body.id;
     await f
-      .post('/receipts', {
+      .stockPost('/receipts', {
         merchantId,
         lines: [{ itemId, quantity: 20, condition: 'GOOD' }],
       })
       .set('Idempotency-Key', randomUUID())
       .expect(201);
     const shipment = await f
-      .post('/shipments', { merchantId, lines: [{ itemId, quantity: 10 }] })
+      .stockPost('/shipments', {
+        merchantId,
+        lines: [{ itemId, quantity: 10 }],
+      })
       .set('Idempotency-Key', randomUUID())
       .expect(201);
     shipmentId = shipment.body.id;
     shipmentLineId = shipment.body.lines[0].id;
     await f
-      .post(`/shipments/${shipmentId}/prepare`, {})
+      .stockPost(`/shipments/${shipmentId}/prepare`, {})
       .set('Idempotency-Key', randomUUID())
       .expect(201);
     await f
-      .post(`/shipments/${shipmentId}/dispatch`, {
+      .stockPost(`/shipments/${shipmentId}/dispatch`, {
         carrierName: 'Carrier',
         trackingNumber: 'R-001',
       })
@@ -58,7 +61,7 @@ describe('Returns custody, inspection and restocking', () => {
   });
   const receive = (quantity = 10, key = randomUUID(), token = f.token) =>
     f
-      .post(
+      .stockPost(
         '/returns',
         { merchantId, shipmentId, lines: [{ shipmentLineId, quantity }] },
         token,
@@ -71,7 +74,7 @@ describe('Returns custody, inspection and restocking', () => {
     token = f.token,
   ) =>
     f
-      .post(`/returns/${id}/inspect`, { lines }, token)
+      .stockPost(`/returns/${id}/inspect`, { lines }, token)
       .set('Idempotency-Key', key);
   const review = (
     id: string,
@@ -81,7 +84,7 @@ describe('Returns custody, inspection and restocking', () => {
     reason = 'Checked carefully and confirmed',
   ) =>
     f
-      .post(
+      .stockPost(
         `/returns/inspection-lines/${id}/review`,
         { decision, reason },
         token,
@@ -295,7 +298,7 @@ describe('Returns custody, inspection and restocking', () => {
     const own = await f.tokenFor(
       (await f.createUser('MERCHANT', merchantId)).id,
     );
-    const foreignId = (await f.createMerchant('AB')).id,
+    const foreignId = (await f.createLocatedMerchant('AB')).id,
       foreign = await f.tokenFor(
         (await f.createUser('MERCHANT', foreignId)).id,
       );
@@ -353,7 +356,7 @@ describe('Returns custody, inspection and restocking', () => {
     };
     const r = (
       await f
-        .post('/returns', body)
+        .stockPost('/returns', body)
         .set('Idempotency-Key', key.toUpperCase())
         .expect(201)
     ).body;
@@ -382,9 +385,9 @@ describe('Returns custody, inspection and restocking', () => {
     expect(await balance()).toBe(10);
   });
   it('requires an active merchant and an already dispatched matching source shipment', async () => {
-    const other = (await f.createMerchant('AB')).id;
+    const other = (await f.createLocatedMerchant('AB')).id;
     await f
-      .post('/returns', {
+      .stockPost('/returns', {
         merchantId: other,
         shipmentId,
         lines: [{ shipmentLineId, quantity: 1 }],
@@ -392,7 +395,7 @@ describe('Returns custody, inspection and restocking', () => {
       .set('Idempotency-Key', randomUUID())
       .expect(404);
     await f
-      .post('/returns', {
+      .stockPost('/returns', {
         merchantId,
         shipmentId,
         lines: [{ shipmentLineId: randomUUID(), quantity: 1 }],
@@ -401,12 +404,15 @@ describe('Returns custody, inspection and restocking', () => {
       .expect(400);
     const unsent = (
       await f
-        .post('/shipments', { merchantId, lines: [{ itemId, quantity: 1 }] })
+        .stockPost('/shipments', {
+          merchantId,
+          lines: [{ itemId, quantity: 1 }],
+        })
         .set('Idempotency-Key', randomUUID())
         .expect(201)
     ).body;
     await f
-      .post('/returns', {
+      .stockPost('/returns', {
         merchantId,
         shipmentId: unsent.id,
         lines: [{ shipmentLineId: unsent.lines[0].id, quantity: 1 }],
@@ -442,7 +448,7 @@ describe('Returns custody, inspection and restocking', () => {
     await receive(1.5).expect(400);
     await receive(1, 'bad').expect(400);
     await f
-      .post('/returns', {
+      .stockPost('/returns', {
         merchantId,
         shipmentId,
         receivedAt: '2020-01-01',
@@ -451,7 +457,7 @@ describe('Returns custody, inspection and restocking', () => {
       .set('Idempotency-Key', randomUUID())
       .expect(400);
     await f
-      .post('/returns', {
+      .stockPost('/returns', {
         merchantId,
         shipmentId,
         lines: [
@@ -463,7 +469,7 @@ describe('Returns custody, inspection and restocking', () => {
       .expect(400);
     const r = (await receive().expect(201)).body;
     await f
-      .post(`/returns/${r.id}/inspect`, {
+      .stockPost(`/returns/${r.id}/inspect`, {
         lines: [good(r.lines[0].id)],
         inspectedById: f.adminId,
       })
@@ -562,18 +568,20 @@ describe('Returns custody, inspection and restocking', () => {
       padding: 'x'.repeat(4 * 1024 * 1024),
     };
     await f
-      .post(`/returns/${r.id}/inspect`, huge)
+      .stockPost(`/returns/${r.id}/inspect`, huge)
       .set('Idempotency-Key', randomUUID())
       .expect(413);
     await f
-      .post('/returns', { padding: 'x'.repeat(17000) })
+      .stockPost('/returns', { padding: 'x'.repeat(17000) })
       .set('Idempotency-Key', randomUUID())
       .expect(413);
     await f
       .patch(`/returns/${r.id}/inspect`, { padding: 'x'.repeat(17000) })
       .expect(413);
     await f
-      .post(`/returns/${r.id}/inspect/extra`, { padding: 'x'.repeat(17000) })
+      .stockPost(`/returns/${r.id}/inspect/extra`, {
+        padding: 'x'.repeat(17000),
+      })
       .expect(413);
     await inspect(r.id, [good(r.lines[0].id)]).expect(201);
   });
@@ -583,7 +591,7 @@ describe('Returns custody, inspection and restocking', () => {
       itemIds.push(
         (
           await f
-            .post('/items', {
+            .stockPost('/items', {
               merchantId,
               name: `Bulk ${n}`,
               brand: null,
@@ -595,7 +603,7 @@ describe('Returns custody, inspection and restocking', () => {
       );
     }
     await f
-      .post('/receipts', {
+      .stockPost('/receipts', {
         merchantId,
         lines: itemIds.map((id) => ({
           itemId: id,
@@ -607,7 +615,7 @@ describe('Returns custody, inspection and restocking', () => {
       .expect(201);
     const shipment = (
       await f
-        .post('/shipments', {
+        .stockPost('/shipments', {
           merchantId,
           lines: itemIds.map((id) => ({ itemId: id, quantity: 6 })),
         })
@@ -615,11 +623,11 @@ describe('Returns custody, inspection and restocking', () => {
         .expect(201)
     ).body;
     await f
-      .post(`/shipments/${shipment.id}/prepare`, {})
+      .stockPost(`/shipments/${shipment.id}/prepare`, {})
       .set('Idempotency-Key', randomUUID())
       .expect(201);
     await f
-      .post(`/shipments/${shipment.id}/dispatch`, {
+      .stockPost(`/shipments/${shipment.id}/dispatch`, {
         carrierName: 'Carrier',
         trackingNumber: 'BULK',
       })
@@ -627,7 +635,7 @@ describe('Returns custody, inspection and restocking', () => {
       .expect(201);
     const r = (
       await f
-        .post('/returns', {
+        .stockPost('/returns', {
           merchantId,
           shipmentId: shipment.id,
           lines: shipment.lines.map((l: { id: string }) => ({

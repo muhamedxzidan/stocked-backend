@@ -1,3 +1,5 @@
+import { canonicalShelfAllocations } from '../inventory/stock-placement-input.js';
+import { StockPlacementService } from '../inventory/stock-placement.service.js';
 import { createHash } from 'node:crypto';
 import {
   BadRequestException,
@@ -48,6 +50,8 @@ const receiptSelect = {
 @Injectable()
 export class ReceiptsService {
   constructor(
+    @Inject(StockPlacementService)
+    private readonly placements: StockPlacementService,
     @Inject(PrismaService) private readonly database: PrismaService,
     @Inject(StockMutationService)
     private readonly mutations: StockMutationService,
@@ -143,11 +147,10 @@ export class ReceiptsService {
           itemIds,
         );
         const deltas = new Map<string, number>();
-        for (const line of input.lines)
-          deltas.set(
-            line.itemId,
-            (deltas.get(line.itemId) ?? 0) + line.quantity,
-          );
+        for (const line of input.lines) {
+          const itemId = line.itemId.toLowerCase();
+          deltas.set(itemId, (deltas.get(itemId) ?? 0) + line.quantity);
+        }
         this.posting.assertWithinRange(balances, deltas);
         const verified = await this.mutations.revalidate(
           tx,
@@ -191,7 +194,7 @@ export class ReceiptsService {
           lineRecords.push({ record, item });
         }
         for (const { record, item } of lineRecords) {
-          await tx.stockMovement.create({
+          const movement = await tx.stockMovement.create({
             data: {
               warehouseId: warehouse.id,
               merchantId,
@@ -206,6 +209,11 @@ export class ReceiptsService {
               receiptLineId: record.id,
             },
           });
+          await this.placements.allocateMovement(
+            tx,
+            movement,
+            input.lines[record.position - 1].placements,
+          );
         }
         await this.posting.apply(tx, balances, deltas, receivedAt);
         return {
@@ -284,6 +292,7 @@ export class ReceiptsService {
         itemId: line.itemId.toLowerCase(),
         quantity: line.quantity,
         condition: line.condition,
+        placements: canonicalShelfAllocations(line.placements),
         issueType: line.condition === 'NOTED' ? line.issueType : null,
         notes: line.condition === 'NOTED' ? line.notes?.trim() : null,
       })),

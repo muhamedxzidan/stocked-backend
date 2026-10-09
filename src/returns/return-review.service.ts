@@ -1,3 +1,6 @@
+import { canonicalShelfAllocations } from '../inventory/stock-placement-input.js';
+import { ReturnCustodyPlacementService } from '../inventory/return-custody-placement.service.js';
+import { StockPlacementService } from '../inventory/stock-placement.service.js';
 import {
   BadRequestException,
   ConflictException,
@@ -17,6 +20,10 @@ import { lockReturnItems, lockReturnReceipt } from './return-source.js';
 @Injectable()
 export class ReturnReviewService {
   constructor(
+    @Inject(ReturnCustodyPlacementService)
+    private readonly custody: ReturnCustodyPlacementService,
+    @Inject(StockPlacementService)
+    private readonly placements: StockPlacementService,
     @Inject(PrismaService) private readonly database: PrismaService,
     @Inject(StockMutationService)
     private readonly mutations: StockMutationService,
@@ -34,6 +41,8 @@ export class ReturnReviewService {
         inspectionLineId,
         decision: input.decision,
         reason: input.reason.trim(),
+        placements: canonicalShelfAllocations(input.placements),
+        custodySources: canonicalShelfAllocations(input.custodySources),
       },
       requestHash = returnHash(canonical);
     return this.mutations.run(
@@ -86,6 +95,10 @@ export class ReturnReviewService {
         )
           throw new ConflictException('Group is already reviewed');
         const accepted = canonical.decision === 'ACCEPT_TO_STOCK';
+        if (!accepted && (input.placements || input.custodySources))
+          throw new BadRequestException(
+            'Rejected groups cannot include stock allocations',
+          );
         if (accepted && group.issueType === 'MISMATCH')
           throw new BadRequestException(
             'A mismatched item cannot restock the expected SKU',
@@ -129,7 +142,7 @@ export class ReturnReviewService {
           select: reviewSelect,
         });
         if (balances) {
-          await tx.stockMovement.create({
+          const movement = await tx.stockMovement.create({
             data: {
               warehouseId: receipt.warehouseId,
               merchantId: receipt.merchantId,
@@ -145,6 +158,16 @@ export class ReturnReviewService {
               returnReviewId: review.id,
             },
           });
+          await this.placements.allocateMovement(
+            tx,
+            movement,
+            input.placements,
+          );
+          await this.custody.release(
+            tx,
+            movement,
+            input.custodySources ?? input.placements,
+          );
           await this.posting.apply(tx, balances, deltas, reviewedAt);
         }
         return { replayed: false, review };

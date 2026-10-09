@@ -50,6 +50,17 @@ export async function createAdminFixture() {
     const merchants = app.get(MerchantsService);
     const audit = app.get(SecurityAuditService);
     const passwordHash = await passwords.hash(fixturePassword);
+    const shelfByMerchant = new Map<string, string>();
+    const itemMerchant = new Map<string, string>();
+    const shipments = new Map<string, { itemId: string; quantity: number }[]>();
+    const returnSources = new Map<
+      string,
+      { merchantId: string; quantity: number }
+    >();
+    const reviewSources = new Map<
+      string,
+      { merchantId: string; quantity: number }
+    >();
     let adminId: string;
     let token: string;
     let context: AuthenticationContext;
@@ -82,6 +93,11 @@ export async function createAdminFixture() {
           !new URL(testDatabase.url).pathname.startsWith('/stocked_auth_test_')
         )
           throw new Error('Refusing to reset a non-test database');
+        shelfByMerchant.clear();
+        itemMerchant.clear();
+        shipments.clear();
+        returnSources.clear();
+        reviewSources.clear();
         await database.$executeRaw`TRUNCATE sessions, users, merchants, login_attempt_buckets CASCADE`;
         await database.$executeRaw`TRUNCATE shipment_code_sequences`;
         const admin = await database.user.create({
@@ -123,6 +139,176 @@ export async function createAdminFixture() {
             createdById: adminId,
           },
         });
+      },
+      async createLocatedMerchant(code = 'MZ') {
+        const merchant = await database.merchant.create({
+          data: {
+            code,
+            name: `Merchant ${code}`,
+            phone: '+201001234567',
+            createdById: adminId,
+          },
+        });
+        const warehouse = await database.warehouse.findUniqueOrThrow({
+          where: { code: 'MAIN' },
+        });
+        const row = await database.storageRow.upsert({
+          where: {
+            warehouseId_code: { warehouseId: warehouse.id, code: 'TEST-ROW' },
+          },
+          create: {
+            warehouseId: warehouse.id,
+            code: 'TEST-ROW',
+            name: 'Test row',
+            createdById: adminId,
+          },
+          update: {},
+        });
+        const shelf = await database.storageShelf.create({
+          data: {
+            warehouseId: warehouse.id,
+            rowId: row.id,
+            merchantId: merchant.id,
+            code: `S-${code}`,
+            name: `Shelf ${code}`,
+            createdById: adminId,
+          },
+        });
+        shelfByMerchant.set(merchant.id, shelf.id);
+        return { ...merchant, shelfId: shelf.id, rowId: row.id };
+      },
+      // Legacy operation suites opt into explicit fixture locations; production
+      // request handling never supplies or guesses missing allocations.
+      stockPost(path: string, body: object, credential = token) {
+        type Line = {
+          id?: string;
+          itemId?: string;
+          shipmentLineId?: string;
+          receiptLineId?: string;
+          quantity: number;
+          condition?: string;
+          placements?: object[];
+        };
+        const payload = body as {
+          merchantId?: string;
+          referenceMovementId?: string;
+          quantity?: number;
+          direction?: string;
+          decision?: string;
+          lines?: Line[];
+          placements?: object[];
+        };
+        const prepared = { ...payload };
+        const allocation = (
+          merchantId: string | undefined,
+          quantity: number,
+        ) =>
+          merchantId && shelfByMerchant.has(merchantId.toLowerCase())
+            ? [
+                {
+                  shelfId: shelfByMerchant.get(merchantId.toLowerCase())!,
+                  quantity,
+                },
+              ]
+            : undefined;
+        if (path === '/receipts' || path === '/returns')
+          prepared.lines = payload.lines?.map((l) => ({
+            ...l,
+            placements:
+              l.placements ?? allocation(payload.merchantId, l.quantity),
+          }));
+        if (path.endsWith('/dispatch')) {
+          const id = path.split('/')[2].toLowerCase();
+          prepared.placements =
+            payload.placements ??
+            shipments
+              .get(id)
+              ?.flatMap((l) =>
+                (allocation(itemMerchant.get(l.itemId), l.quantity) ?? []).map(
+                  (p) => ({ ...p, itemId: l.itemId }),
+                ),
+              );
+        }
+        if (path.endsWith('/inspect'))
+          prepared.lines = payload.lines?.map((l) => ({
+            ...l,
+            ...(l.condition === 'GOOD'
+              ? {
+                  placements:
+                    l.placements ??
+                    allocation(
+                      returnSources.get(l.receiptLineId!.toLowerCase())
+                        ?.merchantId,
+                      l.quantity,
+                    ),
+                }
+              : {}),
+          }));
+        if (
+          path.includes('/inspection-lines/') &&
+          path.endsWith('/review') &&
+          payload.decision === 'ACCEPT_TO_STOCK'
+        ) {
+          const source = reviewSources.get(path.split('/')[3].toLowerCase());
+          if (source)
+            prepared.placements =
+              payload.placements ??
+              allocation(source.merchantId, source.quantity);
+        }
+        // A receipt movement is recorded by the fixture response listener below.
+        if (path === '/stock-adjustments' && payload.referenceMovementId)
+          prepared.placements =
+            payload.placements ??
+            allocation(
+              itemMerchant.get(payload.referenceMovementId),
+              payload.quantity!,
+            );
+        return request(app.getHttpServer())
+          .post(`/api/v1${path}`)
+          .auth(credential, { type: 'bearer' })
+          .send(prepared)
+          .on(
+            'response',
+            (response: {
+              status: number;
+              body: { id: string; merchantId?: string; lines?: Line[] };
+            }) => {
+              if (response.status >= 400) return;
+              const data = response.body;
+              if (path === '/items' && payload.merchantId)
+                itemMerchant.set(data.id, payload.merchantId);
+              if (path === '/shipments' && data.lines)
+                shipments.set(
+                  data.id.toLowerCase(),
+                  data.lines.map((l) => ({
+                    itemId: l.itemId!,
+                    quantity: l.quantity,
+                  })),
+                );
+              if (path === '/returns' && data.lines)
+                for (const l of data.lines)
+                  returnSources.set(l.id!.toLowerCase(), {
+                    merchantId: data.merchantId!,
+                    quantity: l.quantity,
+                  });
+              if (path.endsWith('/inspect') && data.lines)
+                for (const l of data.lines) {
+                  const source = returnSources.get(l.receiptLineId!);
+                  if (source)
+                    reviewSources.set(l.id!.toLowerCase(), {
+                      merchantId: source.merchantId,
+                      quantity: l.quantity,
+                    });
+                }
+              if (path === '/receipts' && data.lines)
+                for (const l of data.lines) {
+                  const movement = (l as Line & { movement?: { id: string } })
+                    .movement;
+                  if (movement && payload.merchantId)
+                    itemMerchant.set(movement.id, payload.merchantId);
+                }
+            },
+          );
       },
       get(path: string, credential = token) {
         return request(app.getHttpServer())

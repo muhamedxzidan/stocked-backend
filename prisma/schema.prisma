@@ -270,7 +270,8 @@ model StockAdjustment {
   itemId                  String                   @map("item_id") @db.Uuid
   itemCodeSnapshot        String                   @map("item_code_snapshot") @db.VarChar(40)
   itemNameSnapshot        String                   @map("item_name_snapshot") @db.VarChar(200)
-  referenceMovementId     String                   @map("reference_movement_id") @db.Uuid
+  referenceMovementId     String?                  @map("reference_movement_id") @db.Uuid
+  stocktakeLineId         String?                  @unique @map("stocktake_line_id") @db.Uuid
   direction               StockAdjustmentDirection
   quantity                Int
   quantityDelta           Int                      @map("quantity_delta")
@@ -284,7 +285,7 @@ model StockAdjustment {
   merchant                Merchant                 @relation(fields: [merchantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   item                    Item                     @relation(fields: [itemId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   actor                   User                     @relation("AdjustmentActor", fields: [performedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  referenceMovement       StockMovement            @relation("AdjustmentReference", fields: [referenceMovementId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  referenceMovement       StockMovement?           @relation("AdjustmentReference", fields: [referenceMovementId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   movement                StockMovement?           @relation("AdjustmentMovement")
 
   @@unique([warehouseId, idempotencyKey])
@@ -581,4 +582,235 @@ model ReturnReview {
   @@unique([id, inspectionLineId, warehouseId, merchantId, itemId], map: "return_review_scope_key")
   @@index([reviewedById, reviewedAt, id])
   @@map("return_reviews")
+}
+
+// SQL migrations enforce cross-scope foreign keys and immutable ledger constraints.
+model StorageRow {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  warehouseId String   @map("warehouse_id") @db.Uuid
+  code        String   @db.VarChar(40)
+  name        String   @db.VarChar(120)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdById String   @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([warehouseId, code])
+  @@map("storage_rows")
+}
+
+model StorageShelf {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  warehouseId String   @map("warehouse_id") @db.Uuid
+  rowId       String   @map("row_id") @db.Uuid
+  merchantId  String   @map("merchant_id") @db.Uuid
+  code        String   @db.VarChar(40)
+  name        String   @db.VarChar(120)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdById String   @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([warehouseId, code])
+  @@unique([id, warehouseId, merchantId])
+  @@index([merchantId, rowId])
+  @@map("storage_shelves")
+}
+
+model StockPlacementBalance {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  warehouseId String   @map("warehouse_id") @db.Uuid
+  merchantId  String   @map("merchant_id") @db.Uuid
+  itemId      String   @map("item_id") @db.Uuid
+  shelfId     String?  @map("shelf_id") @db.Uuid
+  quantity    Int      @default(0)
+  updatedAt   DateTime @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([warehouseId, itemId, shelfId])
+  @@index([shelfId, merchantId])
+  @@map("stock_placement_balances")
+}
+
+model StockPlacementEntry {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  warehouseId       String   @map("warehouse_id") @db.Uuid
+  merchantId        String   @map("merchant_id") @db.Uuid
+  itemId            String   @map("item_id") @db.Uuid
+  shelfId           String?  @map("shelf_id") @db.Uuid
+  quantityDelta     Int      @map("quantity_delta")
+  kind              String   @db.VarChar(20)
+  movementId        String?  @map("movement_id") @db.Uuid
+  transferId        String?  @map("transfer_id") @db.Uuid
+  actorId           String?  @map("actor_id") @db.Uuid
+  actorNameSnapshot String?  @map("actor_name_snapshot") @db.VarChar(150)
+  recordedAt        DateTime @map("recorded_at") @db.Timestamptz(3)
+
+  @@index([warehouseId, itemId, shelfId])
+  @@index([movementId])
+  @@map("stock_placement_entries")
+}
+
+model StockPlacementTransfer {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  warehouseId       String   @map("warehouse_id") @db.Uuid
+  merchantId        String   @map("merchant_id") @db.Uuid
+  itemId            String   @map("item_id") @db.Uuid
+  fromShelfId       String?  @map("from_shelf_id") @db.Uuid
+  toShelfId         String   @map("to_shelf_id") @db.Uuid
+  quantity          Int
+  reason            String   @db.VarChar(2000)
+  actorId           String   @map("actor_id") @db.Uuid
+  actorNameSnapshot String   @map("actor_name_snapshot") @db.VarChar(150)
+  recordedAt        DateTime @map("recorded_at") @db.Timestamptz(3)
+  idempotencyKey    String   @unique @map("idempotency_key") @db.Uuid
+  requestHash       String   @map("request_hash") @db.Char(64)
+
+  @@map("stock_placement_transfers")
+}
+
+model ReturnCustodyBalance {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  receiptLineId String   @map("receipt_line_id") @db.Uuid
+  warehouseId   String   @map("warehouse_id") @db.Uuid
+  merchantId    String   @map("merchant_id") @db.Uuid
+  itemId        String   @map("item_id") @db.Uuid
+  shelfId       String?  @map("shelf_id") @db.Uuid
+  quantity      Int      @default(0)
+  updatedAt     DateTime @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([receiptLineId, shelfId])
+  @@map("return_custody_balances")
+}
+
+model ReturnCustodyEntry {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  receiptLineId     String   @map("receipt_line_id") @db.Uuid
+  shelfId           String?  @map("shelf_id") @db.Uuid
+  quantityDelta     Int      @map("quantity_delta")
+  kind              String   @db.VarChar(20)
+  movementId        String?  @map("movement_id") @db.Uuid
+  transferKey       String?  @map("transfer_key") @db.Uuid
+  actorId           String?  @map("actor_id") @db.Uuid
+  actorNameSnapshot String?  @map("actor_name_snapshot") @db.VarChar(150)
+  recordedAt        DateTime @map("recorded_at") @db.Timestamptz(3)
+
+  @@index([receiptLineId, shelfId])
+  @@map("return_custody_entries")
+}
+
+enum StocktakeStatus {
+  COUNTING
+  PENDING_APPROVAL
+  APPROVED
+  CANCELLED
+
+  @@map("stocktake_status")
+}
+
+enum StocktakeKind {
+  FULL
+  MERCHANT
+  ROW
+  SHELF
+
+  @@map("stocktake_kind")
+}
+
+model Stocktake {
+  id                   String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  warehouseId          String          @map("warehouse_id") @db.Uuid
+  kind                 StocktakeKind
+  targetId             String?         @map("target_id") @db.Uuid
+  status               StocktakeStatus @default(COUNTING)
+  openedById           String          @map("opened_by_id") @db.Uuid
+  openedByNameSnapshot String          @map("opened_by_name_snapshot") @db.VarChar(150)
+  openedAt             DateTime        @map("opened_at") @db.Timestamptz(3)
+  directorId           String          @map("director_id") @db.Uuid
+  directorNameSnapshot String          @map("director_name_snapshot") @db.VarChar(150)
+  notes                String          @db.VarChar(2000)
+  closedById           String?         @map("closed_by_id") @db.Uuid
+  closedByNameSnapshot String?         @map("closed_by_name_snapshot") @db.VarChar(150)
+  closedAt             DateTime?       @map("closed_at") @db.Timestamptz(3)
+  closingNotes         String?         @map("closing_notes") @db.VarChar(2000)
+
+  @@index([openedAt, id])
+  @@map("stocktakes")
+}
+
+model StocktakeScope {
+  id                   String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  stocktakeId          String @map("stocktake_id") @db.Uuid
+  shelfId              String @map("shelf_id") @db.Uuid
+  rowId                String @map("row_id") @db.Uuid
+  merchantId           String @map("merchant_id") @db.Uuid
+  shelfCodeSnapshot    String @map("shelf_code_snapshot") @db.VarChar(40)
+  rowCodeSnapshot      String @map("row_code_snapshot") @db.VarChar(40)
+  merchantNameSnapshot String @map("merchant_name_snapshot") @db.VarChar(200)
+
+  @@unique([stocktakeId, shelfId])
+  @@map("stocktake_scopes")
+}
+
+model StocktakeLine {
+  id               String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  stocktakeId      String  @map("stocktake_id") @db.Uuid
+  warehouseId      String  @map("warehouse_id") @db.Uuid
+  merchantId       String  @map("merchant_id") @db.Uuid
+  shelfId          String  @map("shelf_id") @db.Uuid
+  itemId           String  @map("item_id") @db.Uuid
+  receiptLineId    String? @map("receipt_line_id") @db.Uuid
+  category         String  @db.VarChar(12)
+  itemCodeSnapshot String  @map("item_code_snapshot") @db.VarChar(40)
+  itemNameSnapshot String  @map("item_name_snapshot") @db.VarChar(200)
+  expectedQuantity Int     @map("expected_quantity")
+  version          Int     @default(0)
+
+  @@index([stocktakeId, merchantId, shelfId])
+  @@map("stocktake_lines")
+}
+
+model StocktakeCountEntry {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  lineId            String   @map("line_id") @db.Uuid
+  version           Int
+  quantity          Int
+  reason            String?  @db.VarChar(2000)
+  notes             String?  @db.VarChar(2000)
+  actorId           String   @map("actor_id") @db.Uuid
+  actorNameSnapshot String   @map("actor_name_snapshot") @db.VarChar(150)
+  recordedAt        DateTime @map("recorded_at") @db.Timestamptz(3)
+
+  @@unique([lineId, version])
+  @@map("stocktake_count_entries")
+}
+
+model StocktakeEvent {
+  sequence          Int
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  stocktakeId       String   @map("stocktake_id") @db.Uuid
+  kind              String   @db.VarChar(30)
+  actorId           String   @map("actor_id") @db.Uuid
+  actorNameSnapshot String   @map("actor_name_snapshot") @db.VarChar(150)
+  recordedAt        DateTime @map("recorded_at") @db.Timestamptz(3)
+  details           Json
+  idempotencyKey    String   @unique @map("idempotency_key") @db.Uuid
+  requestHash       String   @map("request_hash") @db.Char(64)
+
+  @@unique([stocktakeId, sequence])
+  @@index([stocktakeId, recordedAt, id])
+  @@map("stocktake_events")
+}
+
+model ReturnCustodyTransfer {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  receiptLineId     String   @map("receipt_line_id") @db.Uuid
+  fromShelfId       String?  @map("from_shelf_id") @db.Uuid
+  toShelfId         String   @map("to_shelf_id") @db.Uuid
+  quantity          Int
+  reason            String   @db.VarChar(2000)
+  actorId           String   @map("actor_id") @db.Uuid
+  actorNameSnapshot String   @map("actor_name_snapshot") @db.VarChar(150)
+  recordedAt        DateTime @map("recorded_at") @db.Timestamptz(3)
+  idempotencyKey    String   @unique @map("idempotency_key") @db.Uuid
+  requestHash       String   @map("request_hash") @db.Char(64)
+
+  @@map("return_custody_transfers")
 }

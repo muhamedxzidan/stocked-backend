@@ -1,3 +1,4 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -15,13 +16,22 @@ import {
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ShelfQuantityDto } from '../../inventory/dto/stock-placement.dto.js';
 import {
   ReceiptIssueType,
   ReceiptLineCondition,
 } from '../../generated/prisma/client.js';
 
 export class CreateReceiptLineDto {
+  @ApiPropertyOptional({ type: [ShelfQuantityDto] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => ShelfQuantityDto)
+  placements?: ShelfQuantityDto[];
+
   @ApiProperty({ format: 'uuid' })
   @IsUUID('4')
   itemId!: string;

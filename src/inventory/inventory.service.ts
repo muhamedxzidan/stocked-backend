@@ -97,6 +97,7 @@ const movementSelect = {
       performedByNameSnapshot: true,
       recordedAt: true,
       referenceMovementId: true,
+      stocktakeLineId: true,
     },
   },
 } satisfies Prisma.StockMovementSelect;

@@ -1,3 +1,4 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -12,9 +13,18 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ShelfQuantityDto } from '../../inventory/dto/stock-placement.dto.js';
 
 export class ReceiveReturnLineDto {
+  @ApiPropertyOptional({ type: [ShelfQuantityDto] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => ShelfQuantityDto)
+  placements?: ShelfQuantityDto[];
+
   @ApiProperty({ format: 'uuid' }) @IsUUID('4') shipmentLineId!: string;
   @ApiProperty({ minimum: 1, maximum: 1000000 })
   @IsInt()

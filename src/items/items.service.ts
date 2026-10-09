@@ -1,3 +1,4 @@
+import { OperationalWriteGateService } from '../operation-control/operational-write-gate.service.js';
 import {
   BadRequestException,
   ForbiddenException,
@@ -19,6 +20,8 @@ import { presentItem } from './item-response.mapper.js';
 @Injectable()
 export class ItemsService {
   constructor(
+    @Inject(OperationalWriteGateService)
+    private readonly gate: OperationalWriteGateService,
     @Inject(PrismaService) private readonly database: PrismaService,
     @Inject(SessionService) private readonly sessions: SessionService,
     @Inject(AdminMutationService)
@@ -27,6 +30,7 @@ export class ItemsService {
   ) {}
   async create(context: AuthenticationContext, input: CreateItemDto) {
     return this.database.$transaction(async (transaction) => {
+      await this.gate.enter(transaction);
       await this.sessions.lockUser(transaction, context.user.id);
       const current = await this.sessions.validate(
         transaction,

@@ -13,10 +13,10 @@ describe('Shipments lifecycle and stock isolation', () => {
   }, 30000);
   beforeEach(async () => {
     await f.reset();
-    merchantId = (await f.createMerchant()).id;
+    merchantId = (await f.createLocatedMerchant()).id;
     itemId = (
       await f
-        .post('/items', {
+        .stockPost('/items', {
           merchantId,
           name: 'Shipment item',
           brand: null,
@@ -36,14 +36,16 @@ describe('Shipments lifecycle and stock isolation', () => {
     id = itemId,
   ) =>
     f
-      .post(
+      .stockPost(
         '/shipments',
         { merchantId, lines: [{ itemId: id, quantity }] },
         token,
       )
       .set('Idempotency-Key', key);
   const prepare = (id: string, key = randomUUID(), token = f.token) =>
-    f.post(`/shipments/${id}/prepare`, {}, token).set('Idempotency-Key', key);
+    f
+      .stockPost(`/shipments/${id}/prepare`, {}, token)
+      .set('Idempotency-Key', key);
   const dispatch = (
     id: string,
     key = randomUUID(),
@@ -51,7 +53,7 @@ describe('Shipments lifecycle and stock isolation', () => {
     trackingNumber = '001-AB',
   ) =>
     f
-      .post(
+      .stockPost(
         `/shipments/${id}/dispatch`,
         { carrierName: 'Bosta', trackingNumber },
         token,
@@ -59,7 +61,7 @@ describe('Shipments lifecycle and stock isolation', () => {
       .set('Idempotency-Key', key);
   const receive = (quantity = 10, id = itemId) =>
     f
-      .post('/receipts', {
+      .stockPost('/receipts', {
         merchantId,
         lines: [{ itemId: id, quantity, condition: 'GOOD' }],
       })
@@ -178,7 +180,7 @@ describe('Shipments lifecycle and stock isolation', () => {
       lines: [{ itemId: itemId.toUpperCase(), quantity: 3 }],
     };
     const first = await f
-      .post('/shipments', body)
+      .stockPost('/shipments', body)
       .set('Idempotency-Key', rk.toUpperCase())
       .expect(201);
     await register(3, rk).expect(200);
@@ -186,7 +188,7 @@ describe('Shipments lifecycle and stock isolation', () => {
     await dispatch(first.body.id.toUpperCase()).expect(201);
     expect(await balance()).toBe(7);
     const nextItem = await f
-      .post('/items', {
+      .stockPost('/items', {
         merchantId,
         name: 'Next',
         brand: null,
@@ -216,7 +218,7 @@ describe('Shipments lifecycle and stock isolation', () => {
     await receive();
     const second = (
       await f
-        .post('/items', {
+        .stockPost('/items', {
           merchantId,
           name: 'Second',
           brand: null,
@@ -226,7 +228,7 @@ describe('Shipments lifecycle and stock isolation', () => {
         .expect(201)
     ).body.id as string;
     const shipment = await f
-      .post('/shipments', {
+      .stockPost('/shipments', {
         merchantId,
         lines: [
           { itemId, quantity: 2 },
@@ -252,7 +254,7 @@ describe('Shipments lifecycle and stock isolation', () => {
     await dispatch(body.id).expect(201);
     const own = await f.createUser('MERCHANT', merchantId);
     const ownToken = await f.tokenFor(own.id);
-    const other = await f.createMerchant('AB');
+    const other = await f.createLocatedMerchant('AB');
     const foreign = await f.createUser('MERCHANT', other.id);
     const foreignToken = await f.tokenFor(foreign.id);
     expect((await f.get('/shipments', ownToken).expect(200)).body.total).toBe(
@@ -283,13 +285,13 @@ describe('Shipments lifecycle and stock isolation', () => {
 
   it('requires a merchant, rejects another merchant item and duplicate normalized items', async () => {
     await f
-      .post('/shipments', { lines: [{ itemId, quantity: 1 }] })
+      .stockPost('/shipments', { lines: [{ itemId, quantity: 1 }] })
       .set('Idempotency-Key', randomUUID())
       .expect(400);
-    const other = await f.createMerchant('AB');
+    const other = await f.createLocatedMerchant('AB');
     const foreignItem = (
       await f
-        .post('/items', {
+        .stockPost('/items', {
           merchantId: other.id,
           name: 'Other',
           brand: null,
@@ -300,7 +302,7 @@ describe('Shipments lifecycle and stock isolation', () => {
     ).body.id;
     await register(1, randomUUID(), f.token, foreignItem).expect(404);
     await f
-      .post('/shipments', {
+      .stockPost('/shipments', {
         merchantId,
         lines: [
           { itemId, quantity: 1 },
@@ -318,7 +320,7 @@ describe('Shipments lifecycle and stock isolation', () => {
     await register(1_000_001).expect(400);
     await register(1, 'bad-key').expect(400);
     await f
-      .post('/shipments', {
+      .stockPost('/shipments', {
         merchantId,
         registeredById: f.adminId,
         lines: [{ itemId, quantity: 1 }],
@@ -327,20 +329,20 @@ describe('Shipments lifecycle and stock isolation', () => {
       .expect(400);
     const { body } = await register().expect(201);
     await f
-      .post(`/shipments/${body.id}/prepare`, {
+      .stockPost(`/shipments/${body.id}/prepare`, {
         preparedAt: '2026-01-01T00:00:00Z',
       })
       .set('Idempotency-Key', randomUUID())
       .expect(400);
     await f
-      .post(`/shipments/${body.id}/dispatch`, {
+      .stockPost(`/shipments/${body.id}/dispatch`, {
         carrierName: '  ',
         trackingNumber: 'x',
       })
       .set('Idempotency-Key', randomUUID())
       .expect(400);
     await f
-      .post(`/shipments/${body.id}/dispatch`, {
+      .stockPost(`/shipments/${body.id}/dispatch`, {
         carrierName: 'Bosta',
         trackingNumber: 'x',
         dispatchedById: f.adminId,
@@ -348,7 +350,7 @@ describe('Shipments lifecycle and stock isolation', () => {
       .set('Idempotency-Key', randomUUID())
       .expect(400);
     await f
-      .post('/shipments', {
+      .stockPost('/shipments', {
         merchantId,
         notes: 'ا'.repeat(20000),
         lines: [{ itemId, quantity: 1 }],

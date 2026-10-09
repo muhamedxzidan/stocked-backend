@@ -1,3 +1,5 @@
+import { StocktakesModule } from './stocktakes/stocktakes.module.js';
+import { StorageLocationsModule } from './storage-locations/storage-locations.module.js';
 import { ItemsModule } from './items/items.module.js';
 import { ShipmentsModule } from './shipments/shipments.module.js';
 import { ReturnsModule } from './returns/returns.module.js';
@@ -11,6 +13,8 @@ import { StockAdjustmentsModule } from './stock-adjustments/stock-adjustments.mo
 import { HealthController } from './health/health.controller.js';
 @Module({
   imports: [
+    StocktakesModule,
+    StorageLocationsModule,
     AuthModule,
     UsersModule,
     MerchantsModule,

@@ -1,3 +1,4 @@
+import { OperationControlModule } from '../operation-control/operation-control.module.js';
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { PrismaModule } from '../database/prisma.module.js';
@@ -13,7 +14,7 @@ import { PasswordChangeGuard } from './guards/password-change.guard.js';
 import { RolesGuard } from './guards/roles.guard.js';
 import { LoginAttemptsGuard } from './guards/login-attempts.guard.js';
 @Module({
-  imports: [PrismaModule],
+  imports: [OperationControlModule, PrismaModule],
   controllers: [AuthController],
   providers: [
     AdminMutationService,

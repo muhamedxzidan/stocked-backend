@@ -1,3 +1,5 @@
+import { canonicalShelfAllocations } from '../inventory/stock-placement-input.js';
+import { StockPlacementService } from '../inventory/stock-placement.service.js';
 import { createHash } from 'node:crypto';
 import {
   BadRequestException,
@@ -14,7 +16,7 @@ import { StockMutationService } from '../inventory/stock-mutation.service.js';
 import { StockPostingService } from '../inventory/stock-posting.service.js';
 import type { CreateAdjustmentDto } from './dto/create-adjustment.dto.js';
 import type { ListAdjustmentsDto } from './dto/list-adjustments.dto.js';
-const adjustmentRoles = [UserRole.ADMIN, UserRole.WAREHOUSE_KEEPER] as const;
+const adjustmentRoles = [UserRole.ADMIN] as const;
 const adjustmentSelect = {
   id: true,
   merchantId: true,
@@ -23,6 +25,7 @@ const adjustmentSelect = {
   itemCodeSnapshot: true,
   itemNameSnapshot: true,
   referenceMovementId: true,
+  stocktakeLineId: true,
   direction: true,
   quantity: true,
   quantityDelta: true,
@@ -35,6 +38,8 @@ const adjustmentSelect = {
 @Injectable()
 export class StockAdjustmentsService {
   constructor(
+    @Inject(StockPlacementService)
+    private readonly placements: StockPlacementService,
     @Inject(PrismaService) private readonly database: PrismaService,
     @Inject(StockMutationService)
     private readonly mutations: StockMutationService,
@@ -64,6 +69,7 @@ export class StockAdjustmentsService {
           direction: input.direction,
           quantity: input.quantity,
           reason: input.reason.trim(),
+          placements: canonicalShelfAllocations(input.placements),
         }),
       )
       .digest('hex');
@@ -167,7 +173,7 @@ export class StockAdjustmentsService {
           },
           select: { id: true },
         });
-        await tx.stockMovement.create({
+        const movement = await tx.stockMovement.create({
           data: {
             warehouseId: warehouse.id,
             merchantId: source.merchant_id,
@@ -182,6 +188,7 @@ export class StockAdjustmentsService {
             adjustmentId: adjustment.id,
           },
         });
+        await this.placements.allocateMovement(tx, movement, input.placements);
         await this.posting.apply(tx, balances, deltas, recordedAt);
         return {
           replayed: false,
