@@ -58,6 +58,135 @@ describe('Read contracts against real inventory sources', () => {
     );
   }
 
+  it('rejects ignored balance filters and preserves scoped balance and movement queries', async () => {
+    for (const query of [
+      { actorId: f.adminId },
+      { kind: 'RECEIPT_IN' },
+      { from: '2026-01-01T00:00:00Z' },
+      { to: '2027-01-01T00:00:00Z' },
+      { unknown: 'value' },
+    ])
+      await f.get('/balances').query(query).expect(400);
+    for (const query of [
+      { page: 0 },
+      { page: '1.5' },
+      { page: 1000001 },
+      { limit: 101 },
+      { limit: '1e1' },
+      { merchantId: 'bad' },
+      { itemId: 'bad' },
+    ])
+      await f.get('/balances').query(query).expect(400);
+    const balance = (
+      await f
+        .get('/balances', ownToken)
+        .query({ merchantId, itemId, page: 1, limit: 1 })
+        .expect(200)
+    ).body;
+    expect(balance).toMatchObject({ total: 1, page: 1, limit: 1 });
+    expect(balance.items.map((i: { itemId: string }) => i.itemId)).toEqual([
+      itemId,
+    ]);
+    expect(
+      (await f.get('/balances', foreignToken).expect(200)).body.items,
+    ).toEqual([]);
+    await f
+      .get('/balances', ownToken)
+      .query({ merchantId: otherMerchantId })
+      .expect(403);
+    await f.get('/balances', foreignToken).query({ itemId }).expect(404);
+    const receipt = (
+      await command('/receipts', {
+        merchantId,
+        lines: [
+          {
+            itemId,
+            quantity: 3,
+            condition: 'GOOD',
+            placements: [{ shelfId, quantity: 3 }],
+          },
+        ],
+      }).expect(201)
+    ).body;
+    const movementId = receipt.lines[0].movement.id;
+    const recordedAt = (await f.get(`/movements/${movementId}`).expect(200))
+      .body.recordedAt;
+    const end = new Date(new Date(recordedAt).getTime() + 1).toISOString();
+    const filters = {
+      merchantId,
+      itemId,
+      actorId: f.adminId,
+      kind: 'RECEIPT_IN',
+      from: recordedAt,
+      to: end,
+      page: 1,
+      limit: 1,
+    };
+    const movements = (
+      await f.get('/movements', ownToken).query(filters).expect(200)
+    ).body;
+    expect(movements.total).toBe(1);
+    expect(movements.items.map((m: { id: string }) => m.id)).toEqual([
+      movementId,
+    ]);
+    for (const query of [
+      { actorId: randomUUID() },
+      { kind: 'ADJUSTMENT_OUT' },
+      { from: end, to: new Date(new Date(end).getTime() + 1).toISOString() },
+      {
+        from: new Date(new Date(recordedAt).getTime() - 1).toISOString(),
+        to: recordedAt,
+      },
+    ])
+      expect(
+        (
+          await f
+            .get('/movements')
+            .query({ ...filters, ...query })
+            .expect(200)
+        ).body.total,
+      ).toBe(0);
+    await f.get('/movements').query({ from: end, to: recordedAt }).expect(400);
+    for (const [path, fields] of [
+      ['/api/v1/balances', ['merchantId', 'itemId', 'page', 'limit']],
+      [
+        '/api/v1/movements',
+        [
+          'merchantId',
+          'itemId',
+          'actorId',
+          'kind',
+          'from',
+          'to',
+          'page',
+          'limit',
+        ],
+      ],
+    ] as const) {
+      const parameters = document.paths[path].get!.parameters as {
+        name: string;
+        in: string;
+        schema: object;
+      }[];
+      expect(
+        parameters
+          .filter((p) => p.in === 'query')
+          .map((p) => p.name)
+          .sort(),
+      ).toEqual([...fields].sort());
+      expect(parameters.find((p) => p.name === 'page')?.schema).toMatchObject({
+        default: 1,
+        minimum: 1,
+        maximum: 1000000,
+      });
+      expect(parameters.find((p) => p.name === 'limit')?.schema).toMatchObject({
+        default: 25,
+        minimum: 1,
+        maximum: 100,
+      });
+    }
+  });
+
   it('documents zero balances and immutable receipt/adjustment replies, including nullable fields and replay status', async () => {
     const empty = (await f.get(`/balances/${itemId}`).expect(200)).body;
     expect(empty.quantity).toBe(0);

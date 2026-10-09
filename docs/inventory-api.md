@@ -39,4 +39,13 @@ GET balances/:itemId يعرض `{itemId,merchantId,itemCode,itemName,isActive,qua
 
 هذه الحقول تمثل select الفعلي، لا صف ORM كامل؛ Swagger يصف كل مستوى بمخطط محدد وUUID/enums/date-time/nullability. response list يستخدم items من نفس تمثيل detail. لا تغيير للشكل أو الدور أو الأرصدة بهذه المرحلة.
 
-حد معروف منفصل: ListInventoryDto الحالي مشترك بين balances وmovements، ويقبل actorId/kind/from/to في balances رغم عدم استعمالها في استعلام balances. لم يتغير ضمن Blueprint فلاتر الجرد المعتمد؛ يحتاج تضييق عقد query للأرصدة في خطوة مستقلة. merchantId/itemId/page/limit هي المدخلات التي يستخدمها مسار الأرصدة فعليًا.
+## عقد فلاتر الأرصدة — 2026-10-09
+
+`GET /balances` يقبل فقط `merchantId`, `itemId`, `page`, `limit`. المدخلات
+`actorId`, `kind`, `from`, `to` تخص الحركات؛ إرسالها للأرصدة يعيد HTTP 400
+بدل قبولها وتجاهلها. لا تغيير في فلاتر `/movements` أو ملكية التجار.
+
+الترقيم في المسارين: page افتراضي 1 وبين 1 و1,000,000؛ limit افتراضي 25
+وبين 1 و100. يقبل تمثيل عدد صحيح عشري فقط؛ الكسور والصيغة الأسية تُرفض.
+Swagger يعلن الحقول والحدود والقيم الافتراضية صراحة. تبقى استجابة الأرصدة
+وترتيبها وآلية طلب itemId كما كانت.

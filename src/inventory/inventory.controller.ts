@@ -17,6 +17,7 @@ import { UserRole } from '../generated/prisma/client.js';
 import { CurrentAuthentication, Roles } from '../auth/decorators/access.js';
 import type { AuthenticationContext } from '../auth/authenticated-user.js';
 import { InventoryService } from './inventory.service.js';
+import { ListBalancesDto } from './dto/list-balances.dto.js';
 import { ListInventoryDto } from './dto/list-inventory.dto.js';
 @ApiTags('Inventory')
 @ApiBearerAuth()
@@ -35,7 +36,7 @@ export class InventoryController {
   @ApiOkResponse({ type: InventoryBalancesResponseDto })
   balances(
     @CurrentAuthentication() context: AuthenticationContext,
-    @Query() query: ListInventoryDto,
+    @Query() query: ListBalancesDto,
   ) {
     return this.inventory.balances(context, query);
   }

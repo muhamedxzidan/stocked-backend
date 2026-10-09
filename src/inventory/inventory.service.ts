@@ -8,6 +8,7 @@ import {
 import { Prisma, UserRole } from '../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma.service.js';
 import type { AuthenticationContext } from '../auth/authenticated-user.js';
+import type { ListBalancesDto } from './dto/list-balances.dto.js';
 import type { ListInventoryDto } from './dto/list-inventory.dto.js';
 
 const movementSelect = {
@@ -108,7 +109,7 @@ export class InventoryService {
     @Inject(PrismaService) private readonly database: PrismaService,
   ) {}
 
-  async balances(context: AuthenticationContext, query: ListInventoryDto) {
+  async balances(context: AuthenticationContext, query: ListBalancesDto) {
     const merchantId = this.scope(context, query.merchantId);
     const where: Prisma.ItemWhereInput = {
       ...(merchantId ? { merchantId } : {}),

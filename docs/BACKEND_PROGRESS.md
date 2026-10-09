@@ -507,7 +507,7 @@ Conventional Commit المقترح: `fix(api): validate location updates and com
 
 ## 17. استكمال عقود القراءة وتصفية الجرد — 2026-10-09
 
-**الحالة: منفذ ومختبر محليًا، ولم ينشأ commit/push لهذه الخطوة.** Blueprint المعتمد: [read-contracts-blueprint.md](read-contracts-blueprint.md)، اعتماد المستخدم «اوك». هذه المرحلة باك إند فقط؛ لا Flutter أو قاعدة إنتاج.
+**الحالة: منفذ ومختبر؛ رُفع إلى origin/main في commit 5f50b7d.** Blueprint المعتمد: [read-contracts-blueprint.md](read-contracts-blueprint.md)، اعتماد المستخدم «اوك». هذه المرحلة باك إند فقط؛ لا Flutter أو قاعدة إنتاج.
 
 ### التنفيذ ومسار البيانات
 
@@ -572,3 +572,81 @@ Conventional Commit المقترح: `fix(api): validate location updates and com
 التالي المقترح: إغلاق query الأرصدة وتوثيق pagination المفقود بنطاق صغير، ثم تصميم سجل التعديلات الدائم؛ نجاح اختبارات القراءة لا يعني اكتمال المشروع أو جاهزية الإنتاج.
 
 Conventional Commit المقترح: `fix(api): complete read contracts and stocktake query validation`.
+# Balance-query follow-up preparation — 2026-10-09
+
+- Read-contract phase committed and pushed to `origin/main` as `5f50b7d`
+  (`fix(api): complete read contracts and stocktake query validation`).
+- Source tracing confirmed `/balances` accepts but ignores `actorId`, `kind`,
+  `from`, and `to` because it shares `ListInventoryDto` with `/movements`.
+- Prepared `docs/balance-query-blueprint.md`: separate balance query validation,
+  explicit pagination documentation, merchant-isolation and movement-filter
+  regression checks. Implementation awaits explicit blueprint approval under
+  AGENTS.md sections 3 and 10. No production source changed in this preparation.
+- The new blueprint and this checkpoint are local documentation pending commit.
+
+
+## 18. فصل عقد فلاتر الأرصدة — 2026-10-09
+
+اعتمد المستخدم [balance-query-blueprint.md](balance-query-blueprint.md) بعبارة
+«نفذ». نفذ Codex التغيير المحدد دون تفويض: مشكلة صغيرة معلومة المصدر؛ لا
+حاجة لبحث مستقل أو قرار معماري جديد. هذه المرحلة محلية ولم تنشأ لها commit.
+
+### الملفات ومسار البيانات
+
+- `src/inventory/dto/list-balances.dto.ts`: عقد مستقل يملك فقط merchantId/itemId/
+  page/limit بنفس UUID v4 والتحويل العددي والحدود والقيم الافتراضية القديمة.
+- `src/inventory/dto/list-inventory.dto.ts`: إضافة Swagger page/limit للحركات؛
+  لا تغيير في حقولها المقبولة أو validation.
+- `src/inventory/inventory.controller.ts`: ربط GET balances بالعقد الصحيح.
+- `src/inventory/inventory.service.ts`: import ونوع query للأرصدة فقط؛ SQL
+  والملكية والترتيب والحسابات والردود بقيت كما كانت.
+- `test/inventory/read-contracts.e2e-spec.ts`: اختبار API جديد للفلاتر وSwagger
+  وحدود pagination وعزل التجار والفترة نصف المفتوحة للحركات.
+- `docs/inventory-api.md`: توثيق العقد الحالي والتغيير المتعمد إلى HTTP 400.
+- `docs/balance-query-blueprint.md`: تسجيل الاعتماد والتنفيذ.
+- `docs/BACKEND_PROGRESS.md`: سجل التنفيذ والفحوص والمتبقي.
+
+المسار: HTTP query → validation للعقد الخاص بالمسار → controller → service
+merchant scope → Prisma transaction → الرد الحالي. العقدان منفصلان لأن
+الأرصدة والحركات لهما مدخلات مختلفة؛ لم تضف طبقات أو وراثة لمشاركة decorators.
+
+### الحالات والفحوص
+
+- actorId/kind/from/to في balances ترفض400 بدل تجاهلها؛ unknown fields كذلك.
+- merchantId/itemId والترقيم تعمل؛ صفحة0/كسور/صيغة أسية/تجاوز الحدود/UUID غير
+  صالح ترفض400. foreign merchant filter403، صنف التاجر الآخر404، قائمة الآخر
+  فارغة. صنف بلا حركة يستمر برصيد صفر.
+- movements يستمر بتطبيق merchant/item/actor/kind/from/to. الاختبار يثبت شمول
+  from واستبعاد to، ويرفض الفترة العكسية؛ يتحقق من حقول Swagger الفعلية
+  والحدود والقيم الافتراضية للمسارين.
+- regression قبل الإصلاح فشل بالنتيجة200 بدل400. تشغيل sandbox الأول لم يصل
+  PostgreSQL بسبب EPERM؛ التشغيل المسموح وصل قاعدة الاختبار وأثبت المشكلة.
+- أثناء كتابة حالة الفترة عُدلت بيانات الاختبار لتستخدم from<to بدل تساويهما؛
+  الخدمة القائمة رفضت الفترة المتساوية كما ينبغي، ولم تعدل business logic.
+- لا packages/migrations/Flutter/production أو تغييرات write permissions.
+
+نتائج التحقق النهائية:
+
+- npm run build نجح داخل التشغيل النهائي لاختبارات API.
+- npm run lint نجح؛ أعيد بعد آخر تعديل في الاختبار ونجح.
+- npm test: 4 اختبارات وحدات نجحت.
+- npm run test:e2e -- --no-file-parallelism: 157 اختبار API نجحت عبر9 ملفات
+  خلال101.08 ثانية، بينها اختبار جديد في هذه المرحلة.
+- npx prettier --check للملفات الخمسة المصدرية/الاختبارية: نجح.
+- git diff --check وفحص whitespace للملفات الجديدة: بلا أخطاء.
+- مراجعة الفرق النهائية: الخدمة تغير نوع المدخل فقط، لا where/scope/transaction
+  أو حساب؛ Swagger live تحقق منه اختبار API. لا Graphify backend قائم، ولا
+  تغيير هيكلي في flow يتطلب تحديث خريطة Flutter المقصورة على lib.
+- لم تعد اختبارات SQL لأن schema/migrations لم تتغير. الأرقام السابقة ليست
+  فحوصًا جديدة. لا ادعاء مراجعة Antigravity مستقلة أو تحقق أمان إنتاج.
+
+### المتبقي
+
+1. تصميم سجل تعديلات دائم للأصناف والمواقع والإدارة: قبل/بعد/سبب/فاعل/وقت
+   وسياسة احتفاظ، بBlueprint مستقل بعد تتبع نقاط التعديل.
+2. تحقق أمان الإنتاج الفعلي: TLS/grants وفصل runtime/migrations والأسرار
+   والاعتماديات وسياسة عميل الويب؛ لم ينشر إنتاج.
+3. UUID scope normalization واختبار قبول الدورة مع العميل، ثم ربط Flutter
+   لاحقًا ضمن نطاق منفصل.
+
+Conventional Commit المقترح: `fix(inventory): reject unsupported balance filters`.
