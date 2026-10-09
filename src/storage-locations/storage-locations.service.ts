@@ -34,15 +34,16 @@ export class StorageLocationsService {
     context: AuthenticationContext,
     requested?: string,
   ): string | undefined {
+    const normalized = requested?.toLowerCase();
     if (context.user.role === 'MERCHANT') {
       if (
         !context.user.merchantId ||
-        (requested && requested !== context.user.merchantId)
+        (normalized && normalized !== context.user.merchantId)
       )
         throw new ForbiddenException('Access denied');
       return context.user.merchantId;
     }
-    return requested;
+    return normalized;
   }
   async createRow(context: AuthenticationContext, input: CreateStorageRowDto) {
     return this.mutations.run(context, [], async (tx) => {

@@ -22,15 +22,16 @@ export class StocktakesReadService {
     context: AuthenticationContext,
     requested?: string,
   ): string | undefined {
+    const normalized = requested?.toLowerCase();
     if (context.user.role === 'MERCHANT') {
       if (
         !context.user.merchantId ||
-        (requested && requested !== context.user.merchantId)
+        (normalized && normalized !== context.user.merchantId)
       )
         throw new ForbiddenException('Access denied');
       return context.user.merchantId;
     }
-    return requested;
+    return normalized;
   }
   async list(context: AuthenticationContext, q: ListStocktakesDto) {
     const merchantId = this.scope(context, q.merchantId);

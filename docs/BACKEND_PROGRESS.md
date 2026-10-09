@@ -1,7 +1,7 @@
 # Stocked Backend — حالة التنفيذ وخطة الاستكمال
 
 > آخر تحديث: 9 أكتوبر 2026.
-> آخر commit قائم ومرفوع: `7f15568` — فصل فلاتر الأرصدة. سجل التدقيق الدائم منفذ في ملفات العمل؛ نتائج التحقق والترحيل في القسم20.
+> آخر commit قائم ومرفوع: `5dc4c5a` — سجل تدقيق تعديلات المجال الدائم. الترحيل مطبق محليًا؛ الفحوص في القسم20، وتحضير النطاق التالي في القسم21.
 > هذا الملف نقطة بدء لأي جلسة عمل لاحقة، ويُحدَّث بعد كل مرحلة. الحالة هنا تخص الباك إند؛ لا تعني اكتمال الواجهات أو جاهزية الإنتاج.
 
 ## 1. أين وصل المشروع؟
@@ -29,7 +29,7 @@
 
 **حدود العمل:** مشروع الباك إند هو `/Users/mohamedzidan/project/stocked-backend`. مشروع Flutter هو `/Users/mohamedzidan/project/stocked`، ولم يُعدَّل في مراحل الباك إند الحالية. الباك إند مستقل عن Firebase. لا ترحيل بيانات قديمة؛ بدء التشغيل الجديد يكون دون أرصدة افتتاحية، والكمية تبدأ من أول استلام فعلي.
 
-الريبو: [stocked-backend](https://github.com/muhamedxzidan/stocked-backend). آخر commit تنفيذ مرفوع على `main` هو `7f15568`؛ التغييرات التالية في سجل التدقيق محلية حتى طلب push آخر. تحقق من HEAD والفرع وحالة الملفات عند الاستكمال؛ هذه لقطة بتاريخ التحديث وليست قراءة تلقائية للمستقبل.
+الريبو: [stocked-backend](https://github.com/muhamedxzidan/stocked-backend). آخر commit تنفيذ مرفوع على `main` هو `5dc4c5a`؛ ملفات تحضير UUID/البيئة وroadmap التالية محلية حتى طلب push آخر. تحقق من HEAD والفرع وحالة الملفات عند الاستكمال؛ هذه لقطة بتاريخ التحديث وليست قراءة تلقائية للمستقبل.
 
 ## 2. البيئة والتقسيم المعتمد
 
@@ -159,7 +159,7 @@ HTTP → Guards → DTO → Controller → Service
 | الدور | عمليات المخزن | اعتماد مجموعات المرتجع | التسويات الحالية | إدارة الحسابات والتجار | القراءة |
 | --- | --- | --- | --- | --- | --- |
 | المدير `ADMIN` | نعم | نعم | نعم | نعم | الكل |
-| الأمين `WAREHOUSE_KEEPER` | نعم | نعم | نعم | لا | الكل |
+| الأمين `WAREHOUSE_KEEPER` | نعم | نعم | لا؛ المدير فقط | لا | الكل |
 | الموظف `EMPLOYEE` | استلام، أصناف، طلب، تجهيز، خروج، استلام مرتجع وفحص | لا | لا | لا | الكل |
 | التاجر `MERCHANT` | لا | لا | لا | لا | تاجره فقط |
 
@@ -682,7 +682,7 @@ Conventional Commit المقترح: `fix(inventory): reject unsupported balance 
 اعتمد المستخدم [durable-audit-blueprint.md](durable-audit-blueprint.md) بعبارة
 «اوك». النطاق backend فقط: إنشاء وتعديل وحالة ITEM/ROW/SHELF/USER/MERCHANT،
 لا تغيير دفاتر المخزون والشحن والمرتجعات والجرد. لا كود أو بيانات Flutter،
-ولا نشر إنتاج أو اعتماديات جديدة. لا commit/push لهذه المرحلة حتى الآن.
+ولا نشر إنتاج أو اعتماديات جديدة. رُفعت المرحلة إلى origin/main في commit5dc4c5a بعد نجاح الفحوص.
 
 ### التنفيذ ومسار البيانات
 
@@ -829,3 +829,94 @@ DB فقط؛ راجع primary الفروق والنتائج وأعاد تشغيل
   ثم ربط Flutter لاحقًا؛ لم ينفذ أي منها في نطاق السجل.
 
 Conventional Commit المقترح: `feat(audit): persist transactional domain change history`.
+
+
+## 21. رفع السجل وتحضير UUID/البيئة وتوضيح ما بعد السكيما — 2026-10-09
+
+- طلب المستخدم رفع المرحلة وتنفيذ التالي وسأل عن العمل بعد السكيما.
+- `git commit feat(audit): persist transactional domain change history` ثم
+  `git push origin main` نجحا؛ commit5dc4c5a، دون .env/backup/generated.
+- قراءة المصدر المحددة أثبتت6 raw comparisons لـmerchantId في items/inventory/
+  receipts/stock-adjustments/storage-locations/stocktakes reads. shipments/returns
+  تطبع requested بالفعل. AuthenticationContext هوية من PostgreSQL canonical.
+- فحص .env قراءة فقط دون عرض القيم:18 سطرًا، السطر1 فقط import dotenv/config
+  غير صالح؛ إزالة هذا السطر تجريبيًا في الذاكرة أبقت كل parsed settings
+  متطابقة. لم يكتب أو يبدل .env في التحضير.
+- أعد [uuid-environment-blueprint.md](uuid-environment-blueprint.md) بتغيير
+  المقارنات الست واختبار own/foreign بكلcase وصلاحيات الداخل، وbackup محلي
+  لإزالة سطر env فقط دون تغيير قيمه أو حاويته. يحتاج اعتمادBlueprint كما
+  يشترطAGENTS.md3/10؛ لا source/schema/runtime mutations قبل الاعتماد.
+- أضيف [backend-completion-roadmap.md](backend-completion-roadmap.md) للإجابة:
+  اللوجيك ينفذ معالسكيما بالفعل؛ المتبقي قواعد أعمال ناقصة وقبول الدورة
+  والتشغيل الآمن وstaging ثمربطFlutter لاحقًا. roadmap ليس تفويضًا لكلالمراحل.
+- صحح جدول الأدوار الملخص هنا: الأمين لا يجري تسويات؛ ADMIN فقط منذمرحلة
+  الجرد، بما يطابقcontroller/service/SQL والقسم3.4. لا تغيير لصلاحيات الكود.
+- لا Graphify backend؛ لا حاجة لوكيل في قراءة known change points الصغيرة،
+  ولا محاولةAntigravityquota429 مكررة. الفحوص الحالية gitdiffcheck والتحقق
+  الآمن من env/source؛ أرقامAPI162/DB156/unit4 هي فحوص القسم20 وليست تشغيلًا
+  جديدًا في خطوة التحضير هذه.
+
+
+## 22. توحيد نطاق UUID للقراءة وإصلاح البيئة المحلية — 2026-10-09
+
+اعتمد المستخدم مخطط uuid-environment-blueprint برسالة «نفذ». نطاق التنفيذ
+هو المقارنات الست وتنظيف السطر المثبت في.env فقط، دون تغيير schema أو DTO
+أو صلاحيات الكتابة أو idempotency. لا تعديلات Flutter.
+
+### المسار والملفات المعدلة
+
+HTTP query → UUID validation → scope/readMerchant يطبع requested إلى lowercase
+→ مقارنة هوية التاجر من الجلسة → Prisma predicate → response. الخدمة الحالية
+تظل مسؤولة عن نطاق قراءتها؛ لا helper عام أو طبقة إضافية أو تبعية جديدة.
+
+| الملف | التغيير |
+| --- | --- |
+| src/items/items.service.ts | scope يرجع ItemWhereInput بالهوية المطبعة للداخل وهوية الجلسة للتاجر |
+| src/inventory/inventory.service.ts | scope لقراءة balances/movements |
+| src/receipts/receipts.service.ts | readMerchant قبل استعلامات القراءة |
+| src/stock-adjustments/stock-adjustments.service.ts | scope لقائمة التسويات |
+| src/storage-locations/storage-locations.service.ts | scope للصفوف والأرفف والأرصدة والعهدة والدفتر والنقل |
+| src/stocktakes/stocktakes-read.service.ts | scope لقائمة الجرد وخطوطه ونطاقاته |
+| test/inventory/merchant-scope.e2e-spec.ts | 8 اختبارات HTTP بعمليات فعلية لتاجرين ورفين لكل تاجر وصفين مستقلين |
+| docs/inventory-api.md, items-api.md, receipts-api.md, storage-locations-api.md, stocktakes-api.md | سياسة merchantId case والرفض والعزل |
+| docs/uuid-environment-blueprint.md | اعتماد المخطط وحالة التنفيذ |
+| docs/BACKEND_PROGRESS.md | التغييرات والفحوص والمتبقي |
+| .env المحلي المستبعد من Git | إزالة السطر الأول import dotenv/config فقط؛ الإعدادات مطابقة |
+
+### دليل السلوك والفحوص
+
+- قبل تعديل المصدر: ست حالات uppercase own رجعت403 بدل200؛ الشحن والمرتجع
+  نجحا بالنمط السابق. حالة العزل الجامعة تجاوزت timeout5000ms؛ ضبطت30000ms
+  لأنها تنفذ طلبات فعلية متسلسلة كثيرة، دون تغيير متطلبات العزل.
+- بعد الإصلاح: الاختبار المحدد8/8 نجح. own lowercase/uppercase/mixed يعيد نفس
+  الرد، وغياب الفلتر يبقي النطاق. foreign بكلcase403؛ تفاصيل الأصناف والأرصدة
+  والحركات والاستلام والتسوية والشحن والمرتجعات والجرد الأجنبية404. الداخلي
+  EMPLOYEE يقرأ الفلتر لتاجرين؛ غير الصالح والمتكرر400. نطاق الجرد الأجنبي
+  داخل دورة محددة يرجع قائمة فارغة للداخلي، ولا يكشف خطوط التاجر الآخر.
+- primary راجع تجهيز الاختبار وصحح مسار هوية الجرد، وتوزيع الشحنة الصريح،
+  وشروط نتائج النطاق الفارغ للموظف. قبل الجرد جهزت جميع عمليات المخزون؛ فتحت
+  دورة MERCHANT لكل تاجر وألغيت دون تسويات ثم اختبرت القراءة. قواعد اختبار
+  محلية معزولة، لا عينات أضيفت لقاعدة التطوير.
+- build نجح؛ unit4 نجحت؛ lint النهائي نجح؛ Prettier check للملفات السبعة
+  المعدلة في المصدر/الاختبار نجح؛ git diff --check نجح. npm run test:e2e
+  أعاد build ثم نجح170 اختبار API في11 ملفًا (39.92s).
+- backup البيئة0600: /private/tmp/stocked-env-before-uuid-1791552466430.backup.
+  حذف سطر واحد فقط بعد التحقق من شكله ومن تطابق dotenv.parse لكل المفاتيح
+  والقيم قبل/بعد. لا قيم أسرار طبعت. .env0600 ومستبعد بـgit check-ignore.
+- docker compose config --quiet نجح دون طباعة config، وnpx prisma migrate
+  status أكد10 migrations up-to-date للهدف المحلي127.0.0.1:5432/stocked_dev؛
+  فحص Nest المحلي health200 وSwagger200. لا حاوية أعيد إنشاؤها ولا migration
+  جديدة ولا تغير قيم اتصال أو secrets. لم تعد اختباراتSQL؛ لا schema تغيّر.
+
+### الحدود والخطوة التالية
+
+المطلوب المغلق هنا هو UUID القراءة وصيغة البيئة؛ قواعد الأعمال غير المحسومة
+في backend-completion-roadmap باقية وتحتاج تتبعًا ومخططًا واعتمادًا مستقلًا،
+وبعدها قبول الدورة والتشغيل الآمن وstaging وربط Flutter لاحقًا. تحذيرا Vite
+paths وpg concurrent query يظهران من أدوات الاختبار القائمة، وليس إخفاقًا
+للتغيير؛ لا upgrade أو إعادة تصميم للأدوات في هذا النطاق. لا جاهزية إنتاج
+شاملة مُدعاة. التعديلات المحلية لهذه المرحلة لم ترفع بعد؛ السجل السابق على
+origin/main عند5dc4c5a. التفويض اقتصر على ملف الاختبار؛ القرار والمصدر والبيئة
+والمراجعة النهائية لدى primary. لا تكرار لمحاولة Antigravity quota429.
+
+Conventional Commit المقترح: `fix(reads): normalize merchant UUID scope filters`.

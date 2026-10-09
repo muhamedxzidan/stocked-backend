@@ -243,15 +243,16 @@ export class InventoryService {
     context: AuthenticationContext,
     requested?: string,
   ): string | undefined {
+    const normalized = requested?.toLowerCase();
     if (context.user.role === UserRole.MERCHANT) {
       if (
         !context.user.merchantId ||
-        (requested && requested !== context.user.merchantId)
+        (normalized && normalized !== context.user.merchantId)
       )
         throw new ForbiddenException('Access denied');
       return context.user.merchantId;
     }
-    return requested;
+    return normalized;
   }
   private assertDateRange(from?: string, to?: string): void {
     if (from && to && new Date(from) >= new Date(to))

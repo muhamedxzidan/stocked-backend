@@ -211,16 +211,14 @@ export class ItemsService {
     context: AuthenticationContext,
     requestedMerchantId?: string,
   ): Prisma.ItemWhereInput {
+    const normalized = requestedMerchantId?.toLowerCase();
     if (context.user.role === 'MERCHANT') {
       const merchantId = context.user.merchantId;
-      if (
-        !merchantId ||
-        (requestedMerchantId && requestedMerchantId !== merchantId)
-      )
+      if (!merchantId || (normalized && normalized !== merchantId))
         throw new ForbiddenException('Access denied');
       return { merchantId };
     }
-    return requestedMerchantId ? { merchantId: requestedMerchantId } : {};
+    return normalized ? { merchantId: normalized } : {};
   }
   private async find(
     context: AuthenticationContext,
