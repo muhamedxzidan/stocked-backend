@@ -23,7 +23,10 @@ export class StockMutationService {
       | 'adjustment'
       | 'shipment_register'
       | 'shipment_prepare'
-      | 'shipment_dispatch',
+      | 'shipment_dispatch'
+      | 'return_receive'
+      | 'return_inspect'
+      | 'return_review',
     key: string,
     roles: readonly UserRole[],
     work: (

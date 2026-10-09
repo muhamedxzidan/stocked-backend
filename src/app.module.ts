@@ -1,5 +1,6 @@
 import { ItemsModule } from './items/items.module.js';
 import { ShipmentsModule } from './shipments/shipments.module.js';
+import { ReturnsModule } from './returns/returns.module.js';
 import { Module } from '@nestjs/common';
 import { AuthModule } from './auth/auth.module.js';
 import { UsersModule } from './users/users.module.js';
@@ -18,6 +19,7 @@ import { HealthController } from './health/health.controller.js';
     ReceiptsModule,
     StockAdjustmentsModule,
     ShipmentsModule,
+    ReturnsModule,
   ],
   controllers: [HealthController],
 })

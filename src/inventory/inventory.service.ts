@@ -21,6 +21,44 @@ const movementSelect = {
   actorId: true,
   actorNameSnapshot: true,
   recordedAt: true,
+  returnInspectionLine: {
+    select: {
+      id: true,
+      receiptId: true,
+      receiptLineId: true,
+      quantity: true,
+      condition: true,
+      issueType: true,
+      notes: true,
+      inspection: {
+        select: {
+          id: true,
+          inspectedById: true,
+          inspectedByNameSnapshot: true,
+          inspectedAt: true,
+          receipt: {
+            select: {
+              id: true,
+              shipmentId: true,
+              receivedById: true,
+              receivedByNameSnapshot: true,
+              receivedAt: true,
+            },
+          },
+        },
+      },
+    },
+  },
+  returnReview: {
+    select: {
+      id: true,
+      decision: true,
+      reason: true,
+      reviewedById: true,
+      reviewedByNameSnapshot: true,
+      reviewedAt: true,
+    },
+  },
   shipmentLine: { select: { id: true, shipmentId: true, quantity: true } },
   shipmentDispatch: {
     select: {

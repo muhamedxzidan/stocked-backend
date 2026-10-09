@@ -42,6 +42,9 @@ model User {
   registeredShipments       Shipment[]            @relation("ShipmentRegistrar")
   preparedShipments         ShipmentPreparation[] @relation("ShipmentPreparer")
   dispatchedShipments       ShipmentDispatch[]    @relation("ShipmentDispatcher")
+  receivedReturns           ReturnReceipt[]       @relation("ReturnReceiver")
+  inspectedReturns          ReturnInspection[]    @relation("ReturnInspector")
+  reviewedReturns           ReturnReview[]        @relation("ReturnReviewer")
 
   @@index([merchantId])
   @@index([role, isActive])
@@ -71,6 +74,7 @@ model Merchant {
   shipmentLines        ShipmentLine[]
   shipmentPreparations ShipmentPreparation[]
   shipmentDispatches   ShipmentDispatch[]
+  returns              ReturnReceipt[]
 
   @@map("merchants")
 }
@@ -161,6 +165,7 @@ enum StockMovementKind {
   ADJUSTMENT_IN
   ADJUSTMENT_OUT
   SHIPMENT_OUT
+  RETURN_IN
 
   @@map("stock_movement_kind")
 }
@@ -188,6 +193,7 @@ model Warehouse {
   shipmentCodeSequence ShipmentCodeSequence?
   shipmentPreparations ShipmentPreparation[]
   shipmentDispatches   ShipmentDispatch[]
+  returns              ReturnReceipt[]
 
   @@map("warehouses")
 }
@@ -289,30 +295,34 @@ model StockAdjustment {
 }
 
 model StockMovement {
-  id                      String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  warehouseId             String            @map("warehouse_id") @db.Uuid
-  merchantId              String            @map("merchant_id") @db.Uuid
-  itemId                  String            @map("item_id") @db.Uuid
-  itemCodeSnapshot        String            @map("item_code_snapshot") @db.VarChar(40)
-  itemNameSnapshot        String            @map("item_name_snapshot") @db.VarChar(200)
+  id                      String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  warehouseId             String                @map("warehouse_id") @db.Uuid
+  merchantId              String                @map("merchant_id") @db.Uuid
+  itemId                  String                @map("item_id") @db.Uuid
+  itemCodeSnapshot        String                @map("item_code_snapshot") @db.VarChar(40)
+  itemNameSnapshot        String                @map("item_name_snapshot") @db.VarChar(200)
   kind                    StockMovementKind
-  quantityDelta           Int               @map("quantity_delta")
-  actorId                 String            @map("actor_id") @db.Uuid
-  actorNameSnapshot       String            @map("actor_name_snapshot") @db.VarChar(150)
-  recordedAt              DateTime          @map("recorded_at") @db.Timestamptz(3)
-  receiptLineId           String?           @unique @map("receipt_line_id") @db.Uuid
-  adjustmentId            String?           @unique @map("adjustment_id") @db.Uuid
-  shipmentLineId          String?           @unique @map("shipment_line_id") @db.Uuid
-  shipmentDispatchId      String?           @map("shipment_dispatch_id") @db.Uuid
-  shipmentLine            ShipmentLine?     @relation(fields: [shipmentLineId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  shipmentDispatch        ShipmentDispatch? @relation(fields: [shipmentDispatchId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  warehouse               Warehouse         @relation(fields: [warehouseId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  merchant                Merchant          @relation(fields: [merchantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  item                    Item              @relation(fields: [itemId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  actor                   User              @relation(fields: [actorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  receiptLine             ReceiptLine?      @relation("ReceiptLineMovement", fields: [receiptLineId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  adjustment              StockAdjustment?  @relation("AdjustmentMovement", fields: [adjustmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  referencedByAdjustments StockAdjustment[] @relation("AdjustmentReference")
+  quantityDelta           Int                   @map("quantity_delta")
+  actorId                 String                @map("actor_id") @db.Uuid
+  actorNameSnapshot       String                @map("actor_name_snapshot") @db.VarChar(150)
+  recordedAt              DateTime              @map("recorded_at") @db.Timestamptz(3)
+  receiptLineId           String?               @unique @map("receipt_line_id") @db.Uuid
+  adjustmentId            String?               @unique @map("adjustment_id") @db.Uuid
+  shipmentLineId          String?               @unique @map("shipment_line_id") @db.Uuid
+  shipmentDispatchId      String?               @map("shipment_dispatch_id") @db.Uuid
+  shipmentLine            ShipmentLine?         @relation(fields: [shipmentLineId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  shipmentDispatch        ShipmentDispatch?     @relation(fields: [shipmentDispatchId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  warehouse               Warehouse             @relation(fields: [warehouseId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  merchant                Merchant              @relation(fields: [merchantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  item                    Item                  @relation(fields: [itemId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actor                   User                  @relation(fields: [actorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  receiptLine             ReceiptLine?          @relation("ReceiptLineMovement", fields: [receiptLineId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  adjustment              StockAdjustment?      @relation("AdjustmentMovement", fields: [adjustmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  referencedByAdjustments StockAdjustment[]     @relation("AdjustmentReference")
+  returnInspectionLineId  String?               @unique @map("return_inspection_line_id") @db.Uuid
+  returnReviewId          String?               @unique @map("return_review_id") @db.Uuid
+  returnInspectionLine    ReturnInspectionLine? @relation(fields: [returnInspectionLineId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  returnReview            ReturnReview?         @relation(fields: [returnReviewId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([id, warehouseId, merchantId, itemId])
   @@index([warehouseId, merchantId, recordedAt, id])
@@ -340,6 +350,7 @@ model Shipment {
   lines                    ShipmentLine[]
   preparation              ShipmentPreparation?
   dispatch                 ShipmentDispatch?
+  returns                  ReturnReceipt[]
 
   @@unique([warehouseId, idempotencyKey])
   @@unique([warehouseId, code])
@@ -350,24 +361,26 @@ model Shipment {
 }
 
 model ShipmentLine {
-  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  shipmentId       String         @map("shipment_id") @db.Uuid
-  warehouseId      String         @map("warehouse_id") @db.Uuid
-  merchantId       String         @map("merchant_id") @db.Uuid
-  itemId           String         @map("item_id") @db.Uuid
+  id               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shipmentId       String              @map("shipment_id") @db.Uuid
+  warehouseId      String              @map("warehouse_id") @db.Uuid
+  merchantId       String              @map("merchant_id") @db.Uuid
+  itemId           String              @map("item_id") @db.Uuid
   position         Int
-  itemCodeSnapshot String         @map("item_code_snapshot") @db.VarChar(40)
-  itemNameSnapshot String         @map("item_name_snapshot") @db.VarChar(200)
+  itemCodeSnapshot String              @map("item_code_snapshot") @db.VarChar(40)
+  itemNameSnapshot String              @map("item_name_snapshot") @db.VarChar(200)
   quantity         Int
-  shipment         Shipment       @relation(fields: [shipmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  warehouse        Warehouse      @relation(fields: [warehouseId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  merchant         Merchant       @relation(fields: [merchantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  item             Item           @relation(fields: [itemId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  shipment         Shipment            @relation(fields: [shipmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  warehouse        Warehouse           @relation(fields: [warehouseId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  merchant         Merchant            @relation(fields: [merchantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  item             Item                @relation(fields: [itemId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   movement         StockMovement?
+  returnLines      ReturnReceiptLine[]
 
   @@unique([shipmentId, position])
   @@unique([shipmentId, itemId])
   @@unique([id, warehouseId, merchantId, itemId])
+  @@unique([id, shipmentId, warehouseId, merchantId, itemId], map: "shipment_line_return_scope_key")
   @@index([warehouseId, merchantId, itemId, shipmentId])
   @@map("shipment_lines")
 }
@@ -422,10 +435,150 @@ model ShipmentDispatch {
   merchant                 Merchant            @relation(fields: [merchantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   dispatchedBy             User                @relation("ShipmentDispatcher", fields: [dispatchedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
   movements                StockMovement[]
+  returns                  ReturnReceipt[]
 
   @@unique([warehouseId, idempotencyKey])
   @@unique([id, warehouseId, merchantId])
+  @@unique([id, shipmentId, warehouseId, merchantId], map: "dispatch_return_scope_key")
   @@index([warehouseId, merchantId, dispatchedAt, id])
   @@index([warehouseId, dispatchedById, dispatchedAt, id])
   @@map("shipment_dispatches")
+}
+
+enum ReturnIssueType {
+  BROKEN
+  SCRATCH
+  DAMAGED
+  MISMATCH
+  OTHER
+
+  @@map("return_issue_type")
+}
+
+enum ReturnReviewDecision {
+  ACCEPT_TO_STOCK
+  REJECT_OUTSIDE_STOCK
+
+  @@map("return_review_decision")
+}
+
+model ReturnReceipt {
+  id                     String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  warehouseId            String              @map("warehouse_id") @db.Uuid
+  merchantId             String              @map("merchant_id") @db.Uuid
+  shipmentId             String              @map("shipment_id") @db.Uuid
+  dispatchId             String              @map("dispatch_id") @db.Uuid
+  merchantNameSnapshot   String              @map("merchant_name_snapshot") @db.VarChar(200)
+  shipmentCodeSnapshot   String              @map("shipment_code_snapshot") @db.VarChar(24)
+  receivedById           String              @map("received_by_id") @db.Uuid
+  receivedByNameSnapshot String              @map("received_by_name_snapshot") @db.VarChar(150)
+  receivedAt             DateTime            @map("received_at") @db.Timestamptz(3)
+  notes                  String?             @db.VarChar(2000)
+  idempotencyKey         String              @map("idempotency_key") @db.Uuid
+  requestHash            String              @map("request_hash") @db.Char(64)
+  warehouse              Warehouse           @relation(fields: [warehouseId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  merchant               Merchant            @relation(fields: [merchantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  shipment               Shipment            @relation(fields: [shipmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  dispatch               ShipmentDispatch    @relation(fields: [dispatchId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  receiver               User                @relation("ReturnReceiver", fields: [receivedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  lines                  ReturnReceiptLine[]
+  inspection             ReturnInspection?
+
+  @@unique([warehouseId, idempotencyKey])
+  @@unique([id, shipmentId, warehouseId, merchantId], map: "return_receipt_source_key")
+  @@unique([id, warehouseId, merchantId], map: "return_receipt_scope_key")
+  @@index([merchantId, receivedAt, id])
+  @@index([shipmentId, receivedAt, id])
+  @@index([receivedById, receivedAt, id])
+  @@map("return_receipts")
+}
+
+model ReturnReceiptLine {
+  id               String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  receiptId        String                 @map("receipt_id") @db.Uuid
+  shipmentId       String                 @map("shipment_id") @db.Uuid
+  shipmentLineId   String                 @map("shipment_line_id") @db.Uuid
+  warehouseId      String                 @map("warehouse_id") @db.Uuid
+  merchantId       String                 @map("merchant_id") @db.Uuid
+  itemId           String                 @map("item_id") @db.Uuid
+  position         Int
+  quantity         Int
+  itemCodeSnapshot String                 @map("item_code_snapshot") @db.VarChar(40)
+  itemNameSnapshot String                 @map("item_name_snapshot") @db.VarChar(200)
+  receipt          ReturnReceipt          @relation(fields: [receiptId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  shipmentLine     ShipmentLine           @relation(fields: [shipmentLineId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  groups           ReturnInspectionLine[]
+
+  @@unique([receiptId, shipmentLineId])
+  @@unique([receiptId, position])
+  @@unique([id, receiptId, warehouseId, merchantId, itemId], map: "return_receipt_line_scope_key")
+  @@index([shipmentLineId])
+  @@map("return_receipt_lines")
+}
+
+model ReturnInspection {
+  id                      String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  receiptId               String                 @unique @map("receipt_id") @db.Uuid
+  warehouseId             String                 @map("warehouse_id") @db.Uuid
+  merchantId              String                 @map("merchant_id") @db.Uuid
+  inspectedById           String                 @map("inspected_by_id") @db.Uuid
+  inspectedByNameSnapshot String                 @map("inspected_by_name_snapshot") @db.VarChar(150)
+  inspectedAt             DateTime               @map("inspected_at") @db.Timestamptz(3)
+  idempotencyKey          String                 @map("idempotency_key") @db.Uuid
+  requestHash             String                 @map("request_hash") @db.Char(64)
+  receipt                 ReturnReceipt          @relation(fields: [receiptId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  inspector               User                   @relation("ReturnInspector", fields: [inspectedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  lines                   ReturnInspectionLine[]
+
+  @@unique([warehouseId, idempotencyKey])
+  @@unique([id, receiptId, warehouseId, merchantId], map: "return_inspection_scope_key")
+  @@index([inspectedById, inspectedAt, id])
+  @@map("return_inspections")
+}
+
+model ReturnInspectionLine {
+  id            String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  inspectionId  String               @map("inspection_id") @db.Uuid
+  receiptId     String               @map("receipt_id") @db.Uuid
+  receiptLineId String               @map("receipt_line_id") @db.Uuid
+  warehouseId   String               @map("warehouse_id") @db.Uuid
+  merchantId    String               @map("merchant_id") @db.Uuid
+  itemId        String               @map("item_id") @db.Uuid
+  position      Int
+  quantity      Int
+  condition     ReceiptLineCondition
+  issueType     ReturnIssueType?     @map("issue_type")
+  notes         String?              @db.VarChar(2000)
+  inspection    ReturnInspection     @relation(fields: [inspectionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  receiptLine   ReturnReceiptLine    @relation(fields: [receiptLineId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  review        ReturnReview?
+  movement      StockMovement?
+
+  @@unique([inspectionId, position])
+  @@unique([id, warehouseId, merchantId, itemId], map: "return_group_scope_key")
+  @@index([receiptLineId])
+  @@map("return_inspection_lines")
+}
+
+model ReturnReview {
+  id                     String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  inspectionLineId       String               @unique @map("inspection_line_id") @db.Uuid
+  warehouseId            String               @map("warehouse_id") @db.Uuid
+  merchantId             String               @map("merchant_id") @db.Uuid
+  itemId                 String               @map("item_id") @db.Uuid
+  decision               ReturnReviewDecision
+  reason                 String               @db.VarChar(2000)
+  reviewedById           String               @map("reviewed_by_id") @db.Uuid
+  reviewedByNameSnapshot String               @map("reviewed_by_name_snapshot") @db.VarChar(150)
+  reviewedAt             DateTime             @map("reviewed_at") @db.Timestamptz(3)
+  idempotencyKey         String               @map("idempotency_key") @db.Uuid
+  requestHash            String               @map("request_hash") @db.Char(64)
+  inspectionLine         ReturnInspectionLine @relation(fields: [inspectionLineId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  reviewer               User                 @relation("ReturnReviewer", fields: [reviewedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  movement               StockMovement?
+
+  @@unique([warehouseId, idempotencyKey])
+  @@unique([id, inspectionLineId, warehouseId, merchantId, itemId], map: "return_review_scope_key")
+  @@index([reviewedById, reviewedAt, id])
+  @@map("return_reviews")
 }

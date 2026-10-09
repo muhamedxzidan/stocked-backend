@@ -20,7 +20,20 @@ export function configureHttp(app: INestApplication): void {
     response.setHeader('Cache-Control', 'no-store');
     next();
   });
-  app.use(json({ limit: '16kb' }));
+  const inspectionJson = json({ limit: '4mb' });
+  const standardJson = json({ limit: '16kb' });
+  app.use((request: Request, response: Response, next: NextFunction) => {
+    const inspection =
+      request.method === 'POST' &&
+      /^\/api\/v1\/returns\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/inspect\/?$/i.test(
+        request.path,
+      );
+    return (inspection ? inspectionJson : standardJson)(
+      request,
+      response,
+      next,
+    );
+  });
   // Browser integration is a later explicit cookie/CSRF slice. No wildcard CORS.
   app.useGlobalPipes(
     new ValidationPipe({

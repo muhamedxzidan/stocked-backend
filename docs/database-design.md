@@ -210,10 +210,22 @@ SQL يفرض العلاقات وتطابق الكود وعدم تغيير اله
 
 تربط مفاتيح SQL المركبة الصنف بالتاجر والمستند بالمخزن والتاجر، وتربط حركة الاستلام ببندها وحركة التسوية بمستندها. تمنع قاعدة البيانات تعديل أو حذف مستندات الاستلام والبنود والتسويات والحركات، وترفض الرصيد السالب أو غير المطابق لمجموع الحركات. وقت الفاعل ونسخة اسمه تحفظ على المستند والحركة من قيم الجلسة ووقت قاعدة البيانات.
 
-التنفيذ الجاري لا ينشئ endpoints للتجهيز أو الخروج أو المرتجعات أو الجرد. يجب أن تحفظ تلك المراحل مستلم/مجهز/معتمد كل خطوة ونسخة الاسم ووقت الخادم عند تنفيذها، مع اعتماد منفصل للمرتجع ذي الملاحظات. تفاصيل العقد الحالي في [receipts-api.md](receipts-api.md) و[inventory-api.md](inventory-api.md).
+هذه فقرة مرحلة الاستلام؛ أضيفت لاحقًا الشحنات والمرتجعات كما في الأقسام التالية. الجرد لم ينفذ بعد. تفاصيل الاستلام في [receipts-api.md](receipts-api.md) و[inventory-api.md](inventory-api.md).
 
 ## Shipment documents and ledger sources
 
 Shipments now use five tables: `shipments`, `shipment_lines`, `shipment_code_sequences`, `shipment_preparations`, and `shipment_dispatches`. The current status is derived from immutable preparation/dispatch documents. Each event preserves its actor/name/server timestamp. Every line belongs to the shipment merchant and its item via composite foreign keys. Lines can only be inserted in the registration transaction; deferred checks require a complete ordered line set.
 
 `SHIPMENT_OUT` references both a unique shipment line and its dispatch. SQL verifies the same shipment/merchant/item, negative exact quantity, actor/time/snapshots, and a preparation for that shipment. Deferred completeness requires every dispatch line to have its movement; existing ledger/projection checks cover the new negative deltas. Registration and preparation do not reserve or change stock. The enum addition commits in a separate migration before tables/constraints use it. No previously applied migration was edited. See [shipment API](shipments-api.md) for operational limits.
+
+## Return custody, inspection and review
+
+Five append-only tables separate physical custody (`return_receipts`, `return_receipt_lines`), inspection (`return_inspections`, `return_inspection_lines`) and the keeper/admin decision (`return_reviews`). Separate user/name/server-time fields preserve the receiver, inspector and reviewer. Status is derived; no mutable workflow column. `return-source.ts` shares the explicit source and item lock order across these three stages; inventory transaction and posting policies remain in their existing services.
+
+Composite FKs bind the receipt to the original dispatch and shipment, each received line to the original shipment line/item/merchant/warehouse, every inspection group to its own receipt/inspection, and every review/movement to that same group. New unique source composites are additive to existing shipments. SQL partial indexes allow at most one GOOD group and one group per NOTED issue type per received line. Deferred checks require complete ordered sets and exact classification totals. Header transaction sealing prevents late lines.
+
+`RETURN_IN` references a unique inspection group and optionally a unique accepted review. Source triggers verify exact positive quantity, actor/name/time and shipped snapshots. GOOD posts at inspection; accepted NOTED posts at review; pending/rejected/MISMATCH cannot post. Existing ledger-sum projection guards remain unchanged. A failure rolls back document, movements and balances together.
+
+The physical return ceiling counts all received pieces, including rejected, pending and uninspected. A volatile SQL trigger locks the original shipment before a separate SUM statement; new arrival lines explicitly require ReadCommitted isolation. This prevents stale RepeatableRead snapshots bypassing the cap. Reads use RepeatableRead for coherent nested history. No physical cancellation/correction flow is included: an incorrect arrival consumes the cap and requires a future explicit correction design.
+
+Migrations `20261009140000_return_in_enum` and `20261009140100_returns_ledger` commit the enum addition before its use. Previously applied migrations are unchanged. No new packages or Flutter edits. The 4MiB HTTP exception is limited to POST of a valid UUID-v4 return inspection route; all other routes/methods retain 16KiB. The API/fields/roles/limits are documented in [returns-api.md](returns-api.md).
