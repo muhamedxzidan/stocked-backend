@@ -21,6 +21,18 @@ const movementSelect = {
   actorId: true,
   actorNameSnapshot: true,
   recordedAt: true,
+  shipmentLine: { select: { id: true, shipmentId: true, quantity: true } },
+  shipmentDispatch: {
+    select: {
+      id: true,
+      shipmentId: true,
+      dispatchedById: true,
+      dispatchedByNameSnapshot: true,
+      dispatchedAt: true,
+      carrierName: true,
+      trackingNumber: true,
+    },
+  },
   receiptLine: {
     select: {
       id: true,

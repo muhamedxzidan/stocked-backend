@@ -98,3 +98,7 @@ npm run test:db
 - [مخطط تنفيذ الاستلام والمخزون](docs/receipts-inventory-blueprint.md)
 
 .env وnode_modules وdist وsrc/generated/prisma والكاش غير متتبعة في Git. بيانات PostgreSQL ليست جزءًا من المستودع. لا تستخدم npm audit fix --force؛ التحذيرات المتبقية موثقة في دليل المصادقة.
+
+## Shipments
+
+The backend supports immutable order registration, preparation and full atomic warehouse dispatch. Registration/preparation do not reserve stock. See [shipment API and operational limits](docs/shipments-api.md) and the [approved implementation blueprint](docs/shipments-blueprint.md). Each milestone preserves its actor and server timestamp; merchant reads are ownership-scoped.

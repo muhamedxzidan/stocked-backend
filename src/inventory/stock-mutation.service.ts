@@ -18,7 +18,12 @@ export class StockMutationService {
 
   async run<T>(
     context: AuthenticationContext,
-    operation: 'receipt' | 'adjustment',
+    operation:
+      | 'receipt'
+      | 'adjustment'
+      | 'shipment_register'
+      | 'shipment_prepare'
+      | 'shipment_dispatch',
     key: string,
     roles: readonly UserRole[],
     work: (

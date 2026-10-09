@@ -83,6 +83,7 @@ export async function createAdminFixture() {
         )
           throw new Error('Refusing to reset a non-test database');
         await database.$executeRaw`TRUNCATE sessions, users, merchants, login_attempt_buckets CASCADE`;
+        await database.$executeRaw`TRUNCATE shipment_code_sequences`;
         const admin = await database.user.create({
           data: {
             email: 'admin@example.test',

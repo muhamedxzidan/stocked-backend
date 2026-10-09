@@ -19,26 +19,29 @@ enum UserRole {
 
 // A person account. Merchant ownership and account creation are distinct relations.
 model User {
-  id                        String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email                     String            @unique @db.VarChar(254)
-  displayName               String            @map("display_name") @db.VarChar(150)
-  passwordHash              String            @map("password_hash") @db.Text
+  id                        String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email                     String                @unique @db.VarChar(254)
+  displayName               String                @map("display_name") @db.VarChar(150)
+  passwordHash              String                @map("password_hash") @db.Text
   role                      UserRole
-  merchantId                String?           @map("merchant_id") @db.Uuid
-  isActive                  Boolean           @default(true) @map("is_active")
-  mustChangePassword        Boolean           @default(true) @map("must_change_password")
-  createdById               String?           @map("created_by_id") @db.Uuid
-  createdAt                 DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt                 DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
-  merchant                  Merchant?         @relation("MerchantAccounts", fields: [merchantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  creator                   User?             @relation("AccountCreator", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  createdUsers              User[]            @relation("AccountCreator")
-  createdMerchants          Merchant[]        @relation("MerchantCreator")
-  receivedReceipts          Receipt[]         @relation("ReceiptReceiver")
-  performedStockAdjustments StockAdjustment[] @relation("AdjustmentActor")
+  merchantId                String?               @map("merchant_id") @db.Uuid
+  isActive                  Boolean               @default(true) @map("is_active")
+  mustChangePassword        Boolean               @default(true) @map("must_change_password")
+  createdById               String?               @map("created_by_id") @db.Uuid
+  createdAt                 DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                 DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  merchant                  Merchant?             @relation("MerchantAccounts", fields: [merchantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  creator                   User?                 @relation("AccountCreator", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdUsers              User[]                @relation("AccountCreator")
+  createdMerchants          Merchant[]            @relation("MerchantCreator")
+  receivedReceipts          Receipt[]             @relation("ReceiptReceiver")
+  performedStockAdjustments StockAdjustment[]     @relation("AdjustmentActor")
   sessions                  Session[]
-  createdItems              Item[]            @relation("ItemCreator")
+  createdItems              Item[]                @relation("ItemCreator")
   stockMovements            StockMovement[]
+  registeredShipments       Shipment[]            @relation("ShipmentRegistrar")
+  preparedShipments         ShipmentPreparation[] @relation("ShipmentPreparer")
+  dispatchedShipments       ShipmentDispatch[]    @relation("ShipmentDispatcher")
 
   @@index([merchantId])
   @@index([role, isActive])
@@ -47,23 +50,27 @@ model User {
 
 // The business owning goods, independent from its read-only login accounts.
 model Merchant {
-  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  code             String             @unique @db.VarChar(8)
-  name             String             @db.VarChar(200)
-  phone            String             @db.VarChar(32)
-  isActive         Boolean            @default(true) @map("is_active")
-  createdById      String             @map("created_by_id") @db.Uuid
-  createdAt        DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt        DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
-  creator          User               @relation("MerchantCreator", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  accounts         User[]             @relation("MerchantAccounts")
-  items            Item[]
-  itemCodeSequence ItemCodeSequence?
-  receipts         Receipt[]
-  balances         InventoryBalance[]
-  stockMovements   StockMovement[]
-  stockAdjustments StockAdjustment[]
-  receiptLines     ReceiptLine[]
+  id                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code                 String                @unique @db.VarChar(8)
+  name                 String                @db.VarChar(200)
+  phone                String                @db.VarChar(32)
+  isActive             Boolean               @default(true) @map("is_active")
+  createdById          String                @map("created_by_id") @db.Uuid
+  createdAt            DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  creator              User                  @relation("MerchantCreator", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  accounts             User[]                @relation("MerchantAccounts")
+  items                Item[]
+  itemCodeSequence     ItemCodeSequence?
+  receipts             Receipt[]
+  balances             InventoryBalance[]
+  stockMovements       StockMovement[]
+  stockAdjustments     StockAdjustment[]
+  receiptLines         ReceiptLine[]
+  shipments            Shipment[]
+  shipmentLines        ShipmentLine[]
+  shipmentPreparations ShipmentPreparation[]
+  shipmentDispatches   ShipmentDispatch[]
 
   @@map("merchants")
 }
@@ -117,6 +124,7 @@ model Item {
   balances       InventoryBalance[]
   adjustments    StockAdjustment[]
   stockMovements StockMovement[]
+  shipmentLines  ShipmentLine[]
 
   @@unique([merchantId, ordinal])
   @@unique([id, merchantId])
@@ -152,6 +160,7 @@ enum StockMovementKind {
   RECEIPT_IN
   ADJUSTMENT_IN
   ADJUSTMENT_OUT
+  SHIPMENT_OUT
 
   @@map("stock_movement_kind")
 }
@@ -165,15 +174,20 @@ enum StockAdjustmentDirection {
 
 // Stable dimension for stock; MAIN is provisioned by the migration.
 model Warehouse {
-  id           String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  code         String             @unique @db.VarChar(12)
-  name         String             @db.VarChar(120)
-  createdAt    DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
-  receipts     Receipt[]
-  balances     InventoryBalance[]
-  movements    StockMovement[]
-  adjustments  StockAdjustment[]
-  receiptLines ReceiptLine[]
+  id                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code                 String                @unique @db.VarChar(12)
+  name                 String                @db.VarChar(120)
+  createdAt            DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  receipts             Receipt[]
+  balances             InventoryBalance[]
+  movements            StockMovement[]
+  adjustments          StockAdjustment[]
+  receiptLines         ReceiptLine[]
+  shipments            Shipment[]
+  shipmentLines        ShipmentLine[]
+  shipmentCodeSequence ShipmentCodeSequence?
+  shipmentPreparations ShipmentPreparation[]
+  shipmentDispatches   ShipmentDispatch[]
 
   @@map("warehouses")
 }
@@ -288,6 +302,10 @@ model StockMovement {
   recordedAt              DateTime          @map("recorded_at") @db.Timestamptz(3)
   receiptLineId           String?           @unique @map("receipt_line_id") @db.Uuid
   adjustmentId            String?           @unique @map("adjustment_id") @db.Uuid
+  shipmentLineId          String?           @unique @map("shipment_line_id") @db.Uuid
+  shipmentDispatchId      String?           @map("shipment_dispatch_id") @db.Uuid
+  shipmentLine            ShipmentLine?     @relation(fields: [shipmentLineId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  shipmentDispatch        ShipmentDispatch? @relation(fields: [shipmentDispatchId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   warehouse               Warehouse         @relation(fields: [warehouseId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   merchant                Merchant          @relation(fields: [merchantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   item                    Item              @relation(fields: [itemId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -301,4 +319,113 @@ model StockMovement {
   @@index([warehouseId, itemId, recordedAt, id])
   @@index([warehouseId, actorId, recordedAt, id])
   @@map("stock_movements")
+}
+
+// Immutable operation documents; state is derived from preparation/dispatch presence.
+model Shipment {
+  id                       String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  warehouseId              String               @map("warehouse_id") @db.Uuid
+  merchantId               String               @map("merchant_id") @db.Uuid
+  code                     String               @db.VarChar(24)
+  merchantNameSnapshot     String               @map("merchant_name_snapshot") @db.VarChar(200)
+  registeredById           String               @map("registered_by_id") @db.Uuid
+  registeredByNameSnapshot String               @map("registered_by_name_snapshot") @db.VarChar(150)
+  registeredAt             DateTime             @map("registered_at") @db.Timestamptz(3)
+  notes                    String?              @db.VarChar(2000)
+  idempotencyKey           String               @map("idempotency_key") @db.Uuid
+  requestHash              String               @map("request_hash") @db.Char(64)
+  warehouse                Warehouse            @relation(fields: [warehouseId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  merchant                 Merchant             @relation(fields: [merchantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  registeredBy             User                 @relation("ShipmentRegistrar", fields: [registeredById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  lines                    ShipmentLine[]
+  preparation              ShipmentPreparation?
+  dispatch                 ShipmentDispatch?
+
+  @@unique([warehouseId, idempotencyKey])
+  @@unique([warehouseId, code])
+  @@unique([id, warehouseId, merchantId])
+  @@index([warehouseId, merchantId, registeredAt, id])
+  @@index([warehouseId, registeredById, registeredAt, id])
+  @@map("shipments")
+}
+
+model ShipmentLine {
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shipmentId       String         @map("shipment_id") @db.Uuid
+  warehouseId      String         @map("warehouse_id") @db.Uuid
+  merchantId       String         @map("merchant_id") @db.Uuid
+  itemId           String         @map("item_id") @db.Uuid
+  position         Int
+  itemCodeSnapshot String         @map("item_code_snapshot") @db.VarChar(40)
+  itemNameSnapshot String         @map("item_name_snapshot") @db.VarChar(200)
+  quantity         Int
+  shipment         Shipment       @relation(fields: [shipmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  warehouse        Warehouse      @relation(fields: [warehouseId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  merchant         Merchant       @relation(fields: [merchantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  item             Item           @relation(fields: [itemId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  movement         StockMovement?
+
+  @@unique([shipmentId, position])
+  @@unique([shipmentId, itemId])
+  @@unique([id, warehouseId, merchantId, itemId])
+  @@index([warehouseId, merchantId, itemId, shipmentId])
+  @@map("shipment_lines")
+}
+
+model ShipmentCodeSequence {
+  warehouseId String    @id @map("warehouse_id") @db.Uuid
+  lastValue   BigInt    @default(0) @map("last_value")
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@map("shipment_code_sequences")
+}
+
+model ShipmentPreparation {
+  id                     String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shipmentId             String            @unique @map("shipment_id") @db.Uuid
+  warehouseId            String            @map("warehouse_id") @db.Uuid
+  merchantId             String            @map("merchant_id") @db.Uuid
+  preparedById           String            @map("prepared_by_id") @db.Uuid
+  preparedByNameSnapshot String            @map("prepared_by_name_snapshot") @db.VarChar(150)
+  preparedAt             DateTime          @map("prepared_at") @db.Timestamptz(3)
+  idempotencyKey         String            @map("idempotency_key") @db.Uuid
+  requestHash            String            @map("request_hash") @db.Char(64)
+  shipment               Shipment          @relation(fields: [shipmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  warehouse              Warehouse         @relation(fields: [warehouseId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  merchant               Merchant          @relation(fields: [merchantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  preparedBy             User              @relation("ShipmentPreparer", fields: [preparedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  dispatch               ShipmentDispatch?
+
+  @@unique([warehouseId, idempotencyKey])
+  @@unique([id, shipmentId, warehouseId, merchantId])
+  @@index([warehouseId, merchantId, preparedAt, id])
+  @@index([warehouseId, preparedById, preparedAt, id])
+  @@map("shipment_preparations")
+}
+
+model ShipmentDispatch {
+  id                       String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shipmentId               String              @unique @map("shipment_id") @db.Uuid
+  preparationId            String              @unique @map("preparation_id") @db.Uuid
+  warehouseId              String              @map("warehouse_id") @db.Uuid
+  merchantId               String              @map("merchant_id") @db.Uuid
+  carrierName              String              @map("carrier_name") @db.VarChar(200)
+  trackingNumber           String              @map("tracking_number") @db.VarChar(150)
+  dispatchedById           String              @map("dispatched_by_id") @db.Uuid
+  dispatchedByNameSnapshot String              @map("dispatched_by_name_snapshot") @db.VarChar(150)
+  dispatchedAt             DateTime            @map("dispatched_at") @db.Timestamptz(3)
+  idempotencyKey           String              @map("idempotency_key") @db.Uuid
+  requestHash              String              @map("request_hash") @db.Char(64)
+  shipment                 Shipment            @relation(fields: [shipmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  preparation              ShipmentPreparation @relation(fields: [preparationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  warehouse                Warehouse           @relation(fields: [warehouseId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  merchant                 Merchant            @relation(fields: [merchantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  dispatchedBy             User                @relation("ShipmentDispatcher", fields: [dispatchedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  movements                StockMovement[]
+
+  @@unique([warehouseId, idempotencyKey])
+  @@unique([id, warehouseId, merchantId])
+  @@index([warehouseId, merchantId, dispatchedAt, id])
+  @@index([warehouseId, dispatchedById, dispatchedAt, id])
+  @@map("shipment_dispatches")
 }

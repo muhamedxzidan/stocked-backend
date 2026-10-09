@@ -211,3 +211,9 @@ SQL يفرض العلاقات وتطابق الكود وعدم تغيير اله
 تربط مفاتيح SQL المركبة الصنف بالتاجر والمستند بالمخزن والتاجر، وتربط حركة الاستلام ببندها وحركة التسوية بمستندها. تمنع قاعدة البيانات تعديل أو حذف مستندات الاستلام والبنود والتسويات والحركات، وترفض الرصيد السالب أو غير المطابق لمجموع الحركات. وقت الفاعل ونسخة اسمه تحفظ على المستند والحركة من قيم الجلسة ووقت قاعدة البيانات.
 
 التنفيذ الجاري لا ينشئ endpoints للتجهيز أو الخروج أو المرتجعات أو الجرد. يجب أن تحفظ تلك المراحل مستلم/مجهز/معتمد كل خطوة ونسخة الاسم ووقت الخادم عند تنفيذها، مع اعتماد منفصل للمرتجع ذي الملاحظات. تفاصيل العقد الحالي في [receipts-api.md](receipts-api.md) و[inventory-api.md](inventory-api.md).
+
+## Shipment documents and ledger sources
+
+Shipments now use five tables: `shipments`, `shipment_lines`, `shipment_code_sequences`, `shipment_preparations`, and `shipment_dispatches`. The current status is derived from immutable preparation/dispatch documents. Each event preserves its actor/name/server timestamp. Every line belongs to the shipment merchant and its item via composite foreign keys. Lines can only be inserted in the registration transaction; deferred checks require a complete ordered line set.
+
+`SHIPMENT_OUT` references both a unique shipment line and its dispatch. SQL verifies the same shipment/merchant/item, negative exact quantity, actor/time/snapshots, and a preparation for that shipment. Deferred completeness requires every dispatch line to have its movement; existing ledger/projection checks cover the new negative deltas. Registration and preparation do not reserve or change stock. The enum addition commits in a separate migration before tables/constraints use it. No previously applied migration was edited. See [shipment API](shipments-api.md) for operational limits.

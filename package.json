@@ -19,7 +19,7 @@
     "test:cov": "vitest run --coverage",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
     "test:e2e": "npm run build && vitest run --config ./vitest.config.e2e.ts",
-    "test:db": "node --test test/database/identity-schema.test.mjs",
+    "test:db": "node --test test/database/*.test.mjs",
     "admin:bootstrap": "npm run build && node dist/bootstrap/bootstrap-admin.js",
     "auth:cleanup": "node scripts/cleanup-login-attempts.mjs"
   },

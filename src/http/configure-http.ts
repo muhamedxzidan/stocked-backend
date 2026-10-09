@@ -38,7 +38,7 @@ export function configureHttp(app: INestApplication): void {
       new DocumentBuilder()
         .setTitle('Stocked Backend')
         .setDescription(
-          'Identity API. Bearer sessions; business endpoints are implemented in later phases.',
+          'Stocked API: bearer sessions, merchant-owned catalog, receipts, inventory, stock adjustments and shipment milestones.',
         )
         .setVersion('1.0')
         .addBearerAuth({ type: 'http', scheme: 'bearer' })
