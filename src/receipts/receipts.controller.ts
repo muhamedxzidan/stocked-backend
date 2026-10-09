@@ -1,4 +1,8 @@
 import {
+  ReceiptResponseDto,
+  ReceiptListResponseDto,
+} from './dto/receipt-response.dto.js';
+import {
   Body,
   Controller,
   Get,
@@ -17,6 +21,7 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiTags,
+  ApiHeader,
 } from '@nestjs/swagger';
 import { UserRole } from '../generated/prisma/client.js';
 import { CurrentAuthentication, Roles } from '../auth/decorators/access.js';
@@ -41,9 +46,15 @@ export class ReceiptsController {
 
   @Post()
   @Roles(UserRole.ADMIN, UserRole.WAREHOUSE_KEEPER, UserRole.EMPLOYEE)
-  @ApiCreatedResponse({
-    description:
-      'Receipt created, or HTTP 200 when an identical idempotent request is replayed.',
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: true,
+    schema: { type: 'string', format: 'uuid' },
+  })
+  @ApiCreatedResponse({ type: ReceiptResponseDto })
+  @ApiOkResponse({
+    type: ReceiptResponseDto,
+    description: 'Identical actor-bound replay',
   })
   async create(
     @CurrentAuthentication() context: AuthenticationContext,
@@ -57,7 +68,7 @@ export class ReceiptsController {
   }
 
   @Get()
-  @ApiOkResponse()
+  @ApiOkResponse({ type: ReceiptListResponseDto })
   list(
     @CurrentAuthentication() context: AuthenticationContext,
     @Query() query: ListReceiptsDto,
@@ -66,6 +77,7 @@ export class ReceiptsController {
   }
 
   @Get(':id')
+  @ApiOkResponse({ type: ReceiptResponseDto })
   get(
     @CurrentAuthentication() context: AuthenticationContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,

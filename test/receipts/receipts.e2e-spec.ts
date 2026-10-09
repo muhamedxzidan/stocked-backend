@@ -1,3 +1,4 @@
+import request from 'supertest';
 import { randomUUID } from 'node:crypto';
 import { createAdminFixture } from '../support/admin-fixture.js';
 
@@ -42,6 +43,48 @@ describe('Receipts and stock ledger', () => {
   });
   const receive = (body: object, key = randomUUID(), token = f.token) =>
     f.stockPost('/receipts', body, token).set('Idempotency-Key', key);
+
+  it('publishes full inventory, receipt and adjustment response contracts and actor-bound replay statuses', async () => {
+    const doc = (
+      await request(f.app.getHttpServer()).get('/api/docs-json').expect(200)
+    ).body;
+    for (const [path, statuses] of [
+      ['/api/v1/receipts', ['200', '201']],
+      ['/api/v1/stock-adjustments', ['200', '201']],
+    ] as const) {
+      const post = doc.paths[path].post;
+      expect(
+        post.parameters.find(
+          (p: { in: string; name: string }) =>
+            p.in === 'header' && p.name === 'Idempotency-Key',
+        )?.required,
+      ).toBe(true);
+      for (const status of statuses)
+        expect(
+          post.responses[status]?.content?.['application/json']?.schema?.$ref,
+        ).toBeDefined();
+    }
+    for (const path of [
+      '/api/v1/balances',
+      '/api/v1/balances/{itemId}',
+      '/api/v1/movements',
+      '/api/v1/movements/{id}',
+      '/api/v1/receipts',
+      '/api/v1/receipts/{id}',
+      '/api/v1/stock-adjustments',
+      '/api/v1/stock-adjustments/{id}',
+    ]) {
+      const get = doc.paths[path].get;
+      expect(
+        get.responses['200']?.content?.['application/json']?.schema?.$ref,
+      ).toBeDefined();
+      expect(
+        get.parameters?.some(
+          (p: { name: string }) => p.name === 'Idempotency-Key',
+        ) ?? false,
+      ).toBe(false);
+    }
+  });
 
   it('records actor, server time, noted defects, ledger movement and total quantity atomically', async () => {
     const employee = await f.createUser('EMPLOYEE');

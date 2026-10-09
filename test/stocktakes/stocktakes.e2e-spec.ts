@@ -630,6 +630,90 @@ describe('Stocktake, shelf allocation and global write gate', () => {
     ]);
   });
 
+  it('accepts only implemented stocktake queries while preserving merchant and status filtering', async () => {
+    const own = await f.createUser('MERCHANT', merchantId);
+    const token = await f.tokenFor(own.id);
+    await receipt(5);
+    const cancelledId = cycleId(await open().expect(200));
+    await cancel(cancelledId);
+    const id = cycleId(await open().expect(200));
+    for (const [path, query] of [
+      ['lines', 'status=COUNTING'],
+      ['scopes', 'status=COUNTING'],
+      ['events', 'status=COUNTING'],
+      ['events', `merchantId=${merchantId}`],
+    ]) {
+      await f.get(`/stocktakes/${id}/${path}?${query}`).expect(400);
+    }
+    const selected = (
+      await f
+        .get(
+          `/stocktakes?status=COUNTING&merchantId=${merchantId}&limit=1`,
+          token,
+        )
+        .expect(200)
+    ).body;
+    expect(selected.items.map((r: { id: string }) => r.id)).toEqual([id]);
+    expect(selected.total).toBe(1);
+    const closed = (await f.get('/stocktakes?status=CANCELLED').expect(200))
+      .body;
+    expect(closed.items.map((r: { id: string }) => r.id)).toEqual([
+      cancelledId,
+    ]);
+    const selectedLines = (
+      await f
+        .get(
+          `/stocktakes/${id}/lines?merchantId=${merchantId}&shelfId=${shelfId}`,
+          token,
+        )
+        .expect(200)
+    ).body;
+    expect(selectedLines.items).toHaveLength(1);
+    expect(selectedLines.items[0].shelfId).toBe(shelfId);
+    const selectedScopes = (
+      await f
+        .get(
+          `/stocktakes/${id}/scopes?merchantId=${merchantId}&page=1&limit=1`,
+          token,
+        )
+        .expect(200)
+    ).body;
+    expect(selectedScopes.total).toBe(2);
+    expect(selectedScopes.items).toHaveLength(1);
+    for (const path of ['lines', 'scopes'])
+      await f
+        .get(`/stocktakes/${id}/${path}?merchantId=${otherMerchantId}`, token)
+        .expect(403);
+    await f.get(`/stocktakes/${id}/events`, token).expect(403);
+    expect(
+      (await f.get(`/stocktakes/${id}/events?page=1&limit=1`).expect(200)).body
+        .items,
+    ).toHaveLength(1);
+    for (const path of ['lines', 'scopes', 'events']) {
+      await f.get(`/stocktakes/${id}/${path}?limit=101`).expect(400);
+      await f.get(`/stocktakes/${id}/${path}?unknown=1`).expect(400);
+    }
+    const doc = (
+      await request(f.app.getHttpServer()).get('/api/docs-json').expect(200)
+    ).body;
+    for (const [path, fields] of [
+      ['/api/v1/stocktakes', ['status', 'merchantId', 'page', 'limit']],
+      [
+        '/api/v1/stocktakes/{id}/lines',
+        ['merchantId', 'shelfId', 'page', 'limit'],
+      ],
+      ['/api/v1/stocktakes/{id}/scopes', ['merchantId', 'page', 'limit']],
+      ['/api/v1/stocktakes/{id}/events', ['page', 'limit']],
+    ] as const) {
+      expect(
+        doc.paths[path].get.parameters
+          .filter((p: { in: string }) => p.in === 'query')
+          .map((p: { name: string }) => p.name)
+          .sort(),
+      ).toEqual([...fields].sort());
+    }
+  });
+
   it('requires complete merchant-owned shelf allocations and atomically rolls invalid receipts back', async () => {
     await command('/receipts', {
       merchantId,

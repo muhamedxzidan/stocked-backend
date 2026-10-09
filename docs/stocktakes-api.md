@@ -89,3 +89,17 @@ GET `/stocktakes` يدعم status/merchantId/page/limit. GET `/:id` يعرض ر�
 قراءة دورة أو قائمة أو بنود تعلن عبر anyOf تمثيل الموظفين وتمثيل التاجر. رأس الدورة للتاجر يحتوي id/kind/status/openedAt/closedAt فقط؛ البنود محددة بملكيته ولا تعرض countedById/countedByNameSnapshot/countedAt. السجل events محصور بفريق المخزن. نماذج scopes/events والـ pagination والحقول nullable موثقة؛ null للكمية يدل على عدم تسجيل العد، وليس صفرًا.
 
 anyOf مستخدم لأن التمثيل المختصر للتاجر جزء من التمثيل الكامل، دون إضافة discriminator أو تغيير شكل الرد. اختبار العقد يقارن الحقول المنشورة بالـ JSON الحقيقي لكل دور، قبل العد وبعد الاعتماد، ويتحقق من منع بيانات الموظفين عن التاجر. لا تغيير حالات HTTP أو أدوار أو تسويات في هذه المرحلة. Flutter غير معدل؛ التحويل إلى هذا الباك إند يتم لاحقًا.
+
+
+## فلاتر قراءات الجرد — تحديث عقود القراءة 2026-10-09
+
+كل قراءة لها query DTO محدد، ويقبل `page=1` و`limit=50` حتى100 بالإضافة إلى الآتي:
+
+| GET | الفلاتر المنفذة والمقبولة |
+| --- | --- |
+| `/stocktakes` | `merchantId,status` |
+| `/stocktakes/:id/lines` | `merchantId,shelfId` |
+| `/stocktakes/:id/scopes` | `merchantId` |
+| `/stocktakes/:id/events` | pagination فقط؛ موظفو المخزن دون التاجر |
+
+أثر توافق صريح: status في lines/scopes، وstatus/merchantId في events كانت تقبل بلا أثر، وأصبحت400. الفلاتر المدعومة لم تلغ ولم تضف قواعد تصفية جديدة. merchantId الأجنبي يظل403 للتاجر، والأحداث غير متاحة له حتى بدون فلتر. Swagger ينشر query المتطابق مع المصدر الفعلي لكل مسار.

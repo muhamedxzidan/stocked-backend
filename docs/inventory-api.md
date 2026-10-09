@@ -13,10 +13,30 @@
 
 الأدوار الداخلية تقرأ عبر التجار. جلسة التاجر تقرأ سجلات تاجرها فقط، حتى عند طلب UUID أو فلتر يخص تاجرًا آخر. قاعدة البيانات تفرض تطابق الصنف والتاجر في البنود والحركات والأرصدة بالمفاتيح المركبة، والخدمة تضيف شرط ملكية القراءة.
 
-أنواع الحركة المتاحة حاليًا `RECEIPT_IN`, `ADJUSTMENT_IN`, `ADJUSTMENT_OUT`. تجهيز الأوردر والخروج والشحن والمرتجعات والجرد لم تنفذ بعد؛ لن تظهر كأنواع حركة قبل إضافة قواعدها ومساراتها واختبارها.
+أنواع الحركة الحالية: `RECEIPT_IN`, `ADJUSTMENT_IN`, `ADJUSTMENT_OUT`, `SHIPMENT_OUT`, `RETURN_IN`. التسجيل وتجهيز الشحنة لا يغيران الرصيد؛ الخروج يخصمه. GOOD في فحص المرتجع أو قبول الملاحظ يزيد المتاح. فروق الجرد المعتمدة حركات ADJUSTMENT_IN/OUT بمصدر stocktakeLineId. راجع عقود الشحن والمرتجعات والجرد للتفاصيل.
 
-بعد تطبيق أول ترحيل مخزون، لا يضيف النظام بيانات تجارية أو أرصدة افتتاحية. في قاعدة التطوير الحالية ظل الحساب الإداري الموجود كما هو، وتبقى التجار والأصناف والاستلامات والأرصدة والحركات فارغة؛ يوجد سجل المستودع `MAIN` فقط.
+اللقطة التاريخية بعد تطبيق أول ترحيل مخزون: لا يضيف النظام بيانات تجارية أو أرصدة افتتاحية. وقت هذه اللقطة ظل الحساب الإداري الموجود كما هو، وتبقى التجار والأصناف والاستلامات والأرصدة والحركات فارغة؛ يوجد سجل المستودع `MAIN` فقط.
 
 ## امتداد الجرد وتوزيع المواقع — 9 أكتوبر 2026
 
 الإجمالي الحالي يبقى مصدر عرض رصيد المخزن، ويساوي مجموع أرصدة الأرفف وغير الموزع. سجل adjustment في حركة المخزون يعرض stocktakeLineId لتتبع فروق الجرد؛ referenceMovementId يصبح null لهذا المصدر فقط. لا تغير الحركات التاريخية. راجع [المواقع وأرصدة الأرفف وسجل توزيعها](storage-locations-api.md) و[الجرد](stocktakes-api.md).
+
+
+## OpenAPI والاستجابة الفعلية — 2026-10-09
+
+GET balances/:itemId يعرض `{itemId,merchantId,itemCode,itemName,isActive,quantity,updatedAt}`. الصنف الذي لم يسجل له رصيد يعرض quantity:0 وupdatedAt:null. GET balances يلف نفس التمثيل داخل `{items,total,page,limit}`. نماذج الاستجابة منشورة في Swagger، وupdatedAt بصيغة date-time أو null.
+
+الحقول الأساسية للحركة: id/merchantId/itemId/itemCodeSnapshot/itemNameSnapshot/kind/quantityDelta/actorId/actorNameSnapshot/recordedAt. كل حركة تتضمن حقول المصادر الآتية؛ المصدر غير المستخدم null:
+
+| الحركة | المصادر المتداخلة |
+| --- | --- |
+| RECEIPT_IN | receiptLine وحالة البند وheader الاستلام |
+| ADJUSTMENT_IN/OUT اليدوية | adjustment مع referenceMovementId وstocktakeLineId:null |
+| ADJUSTMENT_IN/OUT للجرد | adjustment مع stocktakeLineId وreferenceMovementId:null |
+| SHIPMENT_OUT | shipmentLine وshipmentDispatch والناقل والتتبع والفاعل والتوقيت |
+| RETURN_IN من GOOD | returnInspectionLine وفحصه ومصدر الاستلام، وreturnReview:null |
+| RETURN_IN من قبول الملاحظ | returnInspectionLine مع returnReview وسبب القرار ومن اعتمده ومتى |
+
+هذه الحقول تمثل select الفعلي، لا صف ORM كامل؛ Swagger يصف كل مستوى بمخطط محدد وUUID/enums/date-time/nullability. response list يستخدم items من نفس تمثيل detail. لا تغيير للشكل أو الدور أو الأرصدة بهذه المرحلة.
+
+حد معروف منفصل: ListInventoryDto الحالي مشترك بين balances وmovements، ويقبل actorId/kind/from/to في balances رغم عدم استعمالها في استعلام balances. لم يتغير ضمن Blueprint فلاتر الجرد المعتمد؛ يحتاج تضييق عقد query للأرصدة في خطوة مستقلة. merchantId/itemId/page/limit هي المدخلات التي يستخدمها مسار الأرصدة فعليًا.

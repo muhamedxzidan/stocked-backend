@@ -1,4 +1,10 @@
 import {
+  InventoryBalanceResponseDto,
+  InventoryBalancesResponseDto,
+  InventoryMovementResponseDto,
+  InventoryMovementsResponseDto,
+} from './dto/inventory-response.dto.js';
+import {
   Controller,
   Get,
   Inject,
@@ -26,7 +32,7 @@ export class InventoryController {
     @Inject(InventoryService) private readonly inventory: InventoryService,
   ) {}
   @Get('balances')
-  @ApiOkResponse()
+  @ApiOkResponse({ type: InventoryBalancesResponseDto })
   balances(
     @CurrentAuthentication() context: AuthenticationContext,
     @Query() query: ListInventoryDto,
@@ -34,7 +40,7 @@ export class InventoryController {
     return this.inventory.balances(context, query);
   }
   @Get('balances/:itemId')
-  @ApiOkResponse()
+  @ApiOkResponse({ type: InventoryBalanceResponseDto })
   balance(
     @CurrentAuthentication() context: AuthenticationContext,
     @Param('itemId', new ParseUUIDPipe({ version: '4' })) itemId: string,
@@ -42,7 +48,7 @@ export class InventoryController {
     return this.inventory.balance(context, itemId);
   }
   @Get('movements')
-  @ApiOkResponse()
+  @ApiOkResponse({ type: InventoryMovementsResponseDto })
   movements(
     @CurrentAuthentication() context: AuthenticationContext,
     @Query() query: ListInventoryDto,
@@ -50,7 +56,7 @@ export class InventoryController {
     return this.inventory.movements(context, query);
   }
   @Get('movements/:id')
-  @ApiOkResponse()
+  @ApiOkResponse({ type: InventoryMovementResponseDto })
   movement(
     @CurrentAuthentication() context: AuthenticationContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,

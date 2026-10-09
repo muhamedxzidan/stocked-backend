@@ -1,4 +1,4 @@
-import { Transform, Type } from 'class-transformer';
+import { Transform } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
@@ -17,10 +17,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  StocktakeKind,
-  StocktakeStatus,
-} from '../../generated/prisma/client.js';
+import { StocktakeKind } from '../../generated/prisma/client.js';
 export class OpenStocktakeDto {
   @ApiProperty({ enum: StocktakeKind })
   @IsEnum(StocktakeKind)
@@ -122,50 +119,4 @@ export class StocktakeAttendanceDto {
   notes!: string;
   @ApiProperty({ format: 'uuid' }) @IsUUID('4') userId!: string;
   @ApiProperty() @IsBoolean() present!: boolean;
-}
-export class ListStocktakesDto {
-  @ApiPropertyOptional({ enum: StocktakeStatus })
-  @IsOptional()
-  @IsEnum(StocktakeStatus)
-  status?: StocktakeStatus;
-  @ApiPropertyOptional({ format: 'uuid' })
-  @IsOptional()
-  @IsUUID('4')
-  merchantId?: string;
-  @ApiPropertyOptional({ default: 1 })
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page = 1;
-  @ApiPropertyOptional({ default: 50, maximum: 100 })
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  limit = 50;
-}
-export class StocktakeLinesQueryDto {
-  @ApiPropertyOptional({ enum: StocktakeStatus })
-  @IsOptional()
-  @IsEnum(StocktakeStatus)
-  status?: StocktakeStatus;
-  @ApiPropertyOptional({ format: 'uuid' })
-  @IsOptional()
-  @IsUUID('4')
-  merchantId?: string;
-  @ApiPropertyOptional({ default: 1 })
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page = 1;
-  @ApiPropertyOptional({ default: 50, maximum: 100 })
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  limit = 50;
-  @ApiPropertyOptional({ format: 'uuid' })
-  @IsOptional()
-  @IsUUID('4')
-  shelfId?: string;
 }

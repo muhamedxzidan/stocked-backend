@@ -10,7 +10,9 @@ import type { AuthenticationContext } from '../auth/authenticated-user.js';
 import type {
   ListStocktakesDto,
   StocktakeLinesQueryDto,
-} from './dto/stocktake.dto.js';
+  StocktakeScopesQueryDto,
+  StocktakeEventsQueryDto,
+} from './dto/stocktake-query.dto.js';
 @Injectable()
 export class StocktakesReadService {
   constructor(
@@ -149,7 +151,7 @@ export class StocktakesReadService {
   async events(
     context: AuthenticationContext,
     id: string,
-    q: ListStocktakesDto,
+    q: StocktakeEventsQueryDto,
   ) {
     if (context.user.role === 'MERCHANT')
       throw new ForbiddenException(
@@ -173,7 +175,7 @@ export class StocktakesReadService {
   async scopes(
     context: AuthenticationContext,
     id: string,
-    q: ListStocktakesDto,
+    q: StocktakeScopesQueryDto,
   ) {
     await this.get(context, id);
     const merchantId = this.scope(context, q.merchantId),

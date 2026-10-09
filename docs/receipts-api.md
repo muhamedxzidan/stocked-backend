@@ -56,3 +56,13 @@
 ## امتداد المواقع والجرد — 9 أكتوبر 2026
 
 التسويات اليدوية، زيادة أو نقصان، أصبحت للمدير فقط في Controller والخدمة وSQL. الاستلام والتسوية يحتاجان placements كاملة على أرفف تاجر الصنف. تسوية فرق الجرد لها stocktakeLineId بدل referenceMovementId ولا تنفذ من endpoint التسوية اليدوية؛ يثبتها اعتماد المدير ذريًا. راجع [عقد المواقع](storage-locations-api.md) و[عقد الجرد](stocktakes-api.md). أي جرد نشط يمنع كتابات هذا العقد حتى الإغلاق أو الإلغاء.
+
+
+## OpenAPI للاستلام والتسويات — تحديث 2026-10-09
+
+- POST receipts وstock-adjustments يعلنان Idempotency-Key مطلوبًا (UUIDv4 في التحقق)، وresponse schema نفسها للإنشاء201 ولإعادة الطلب المطابق200. الرد ليس wrapper؛ هو المستند نفسه كما كان.
+- GET list/detail للاستلام والتسويات يعلنان نماذج محددة؛ list هو `{items,total,page,limit}` وitems بنفس تمثيل detail. GET لا يحتاج Idempotency-Key.
+- ReceiptResponseDto يوثق header والمنفذ/اسمه/وقت الاستلام والملاحظات، وكل بند بموضعه والصنف/اسمه/رمزه وحالته وعيبه وملاحظاته ومرجع الحركة.
+- AdjustmentResponseDto يوثق الصنف والتاجر والمنفذ والتوقيت والسبب والاتجاه والكمية وquantityDelta والحركة الناتجة، مع referenceMovementId أو stocktakeLineId حسب المصدر (المصدر الآخر null). اعتماد الجرد فقط ينشئ المصدر الثاني، لا POST التسوية اليدوية.
+- نماذج الاستجابة تصف select الفعلي دون password/session/idempotency hash fields. نطاق التاجر داخل queries مستمر؛ لا تغيير permissions أو ledger أو JSON.
+- اختبارات عقد القراءة تقارن Swagger بالـ JSON الحقيقي، بما فيه القيم nullable ومصادر الحركة المتداخلة وكل مراحلها. نتائج الفحوص الحالية موثقة في BACKEND_PROGRESS؛ الأرقام تحت «التحقق الذي نفذ» أعلاه تخص مرحلة المخزون التاريخية ولا تعني إعادة تشغيلها الآن.

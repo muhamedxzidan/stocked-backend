@@ -1,4 +1,10 @@
 import {
+  ListStocktakesDto,
+  StocktakeLinesQueryDto,
+  StocktakeScopesQueryDto,
+  StocktakeEventsQueryDto,
+} from './dto/stocktake-query.dto.js';
+import {
   Body,
   Controller,
   Get,
@@ -23,11 +29,9 @@ import { CurrentAuthentication, Roles } from '../auth/decorators/access.js';
 import type { AuthenticationContext } from '../auth/authenticated-user.js';
 import {
   ApproveStocktakeDto,
-  ListStocktakesDto,
   OpenStocktakeDto,
   RecordStocktakeCountDto,
   StocktakeAttendanceDto,
-  StocktakeLinesQueryDto,
   StocktakeNotesDto,
 } from './dto/stocktake.dto.js';
 import { StocktakeOpeningService } from './stocktake-opening.service.js';
@@ -285,7 +289,7 @@ export class StocktakesController {
   scopes(
     @CurrentAuthentication() context: AuthenticationContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
-    @Query() query: ListStocktakesDto,
+    @Query() query: StocktakeScopesQueryDto,
   ) {
     return this.reads.scopes(context, id, query);
   }
@@ -295,7 +299,7 @@ export class StocktakesController {
   events(
     @CurrentAuthentication() context: AuthenticationContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
-    @Query() query: ListStocktakesDto,
+    @Query() query: StocktakeEventsQueryDto,
   ) {
     return this.reads.events(context, id, query);
   }

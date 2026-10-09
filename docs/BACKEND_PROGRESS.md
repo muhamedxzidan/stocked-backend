@@ -498,3 +498,77 @@ Conventional Commit المقترح: `fix(api): validate location updates and com
 
 
 توضيح المستخدم بعد التنفيذ: المقصود باستبعاد «فلاتر» هو مشروع Flutter، وليس تعطيل البحث أو التصفية. البحث والفلاتر المدعومة في الباك إند مستمرة، ورفض الفلاتر غير المدعومة تعديل عقد مستقل موثق أعلاه. طلب المستخدم رفع الحالة الحالية إلى GitHub.
+
+
+## 16. تجهيز Blueprint استكمال عقود القراءة — 2026-10-09
+
+طلب المستخدم البدء في الخطوة التالية. قرئت DTO وخدمة قراءات الجرد وcontrollers وselect/payload للمخزون والاستلام والتسويات. التصميم في [read-contracts-blueprint.md](read-contracts-blueprint.md): تضييق query الجرد وفق الفلاتر المنفذة وإكمال response schemas ومفتاح idempotency للاستلام والتسويات دون تغيير الأعمال/SQL/Flutter. كانت هذه خطوة تجهيز التصميم دون كود؛ اعتمده المستخدم بعبارة «اوك» ثم نفذ النطاق في القسم 17. verified HEAD:dea05f7، ولم توجد خريطة Graphify backend؛ لم تكرر محاولة Antigravity quota429 المسجلة. الفحوص الحالية قراءة المصدر وgit diff --check فقط، وليست إعادة تشغيل فحوص المرحلة السابقة.
+
+
+## 17. استكمال عقود القراءة وتصفية الجرد — 2026-10-09
+
+**الحالة: منفذ ومختبر محليًا، ولم ينشأ commit/push لهذه الخطوة.** Blueprint المعتمد: [read-contracts-blueprint.md](read-contracts-blueprint.md)، اعتماد المستخدم «اوك». هذه المرحلة باك إند فقط؛ لا Flutter أو قاعدة إنتاج.
+
+### التنفيذ ومسار البيانات
+
+- فصل query DTO للجرد عن DTO الأوامر إلى أربعة عقود حقيقية: list يستخدم merchantId/status، lines يستخدم merchantId/shelfId، scopes يستخدم merchantId، events pagination فقط. الفلاتر المدعومة تعمل، والحقول المتجاهلة سابقًا ترفض400. default page=1/limit=50/max=100 كما كانت؛ role وmerchant scope وwhere والمعاملات لم تتغير.
+- أضيفت نماذج استجابة محددة من select/JSON الحالي للمخزون والأرصدة والحركات وكل مصادرها المتداخلة، والاستلام والبنود والصفحات، والتسويات ومصادر receipt/stocktake ومراجع الحركة. النماذج لا تعيد صف ORM كامل ولا تضيف حقولًا إلى الرد.
+- Swagger يوثق UUID/enums/date-time/nullability وpagination، وrequired Idempotency-Key في POST الاستلام والتسويات. الاستجابة201 لأول مرة و200 للإعادة المطابقة، بنفس المستند، كما قبل التغيير.
+- نماذج المصادر محلية للميزة لأن تمثيل المصدر داخل movement ليس نفس كامل response الشحنة/المرتجع. لا base classes أو طبقات شكلية أو package؛ كل DTO مسؤول عن تمثيل واضح.
+
+المسار النهائي: `HTTP → global validation + session/role guards → feature controller (query DTO الصحيح) → existing service/scoped query/transaction → existing JSON`. Swagger يصف هذا الرد نفسه؛ لا تدخل له في posting أو الرصيد أو SQL.
+
+### الملفات والمسؤوليات
+
+| الملف | التغيير |
+| --- | --- |
+| src/stocktakes/dto/stocktake.dto.ts | بقي DTO الأوامر فقط، دون تغيير شروطها |
+| src/stocktakes/dto/stocktake-query.dto.ts | أربعة عقود تصفية/صفحات منفذة فعلًا |
+| src/stocktakes/stocktakes.controller.ts | ربط reads بعقود query الصحيحة |
+| src/stocktakes/stocktakes-read.service.ts | imports/types scopes/events فقط؛ نفس المنطق |
+| src/inventory/dto/inventory-response.dto.ts | balance/page، movement/page، تمثيلات receipt/adjustment/shipment/return ومصادرها |
+| src/inventory/inventory.controller.ts | نشر response schema لكل قراءة |
+| src/receipts/dto/receipt-response.dto.ts | receipt header/line/movement reference/page |
+| src/receipts/receipts.controller.ts | response schemas للإنشاء/الإعادة/القراءة وrequired key |
+| src/stock-adjustments/dto/adjustment-response.dto.ts | adjustment/movement reference/page مع nullable source ids |
+| src/stock-adjustments/stock-adjustments.controller.ts | response schemas وrequired key و200/201 |
+| test/support/openapi-response.ts | مقارنة JSON HTTP الحقيقي بمخطط OpenAPI مع nested refs/allOf/nullability/enum/date/uuid؛ دعم اختبار فقط |
+| test/inventory/read-contracts.e2e-spec.ts | اختبارا دورة مصادر فعلية وعزل تاجر/إعادة طلب/صفر قبل المخزون |
+| test/stocktakes/stocktakes.e2e-spec.ts | اختبار query المقبول/المرفوض وstatus/merchant/shelf/page والملكية |
+| test/receipts/receipts.e2e-spec.ts | اختبار schemas لكل reads وrequired key و201/200 |
+| docs/stocktakes-api.md وinventory-api.md وreceipts-api.md | العقود الحالية والتوافق وتصحيح وصف أنواع الحركة التاريخي |
+| docs/read-contracts-blueprint.md وBACKEND_PROGRESS.md | تسجيل الاعتماد والتنفيذ والفحوص والمتبقي |
+
+### أثر التوافق والحالات الطرفية
+
+- status في lines/scopes وstatus/merchantId في events أصبح400 بدل قبول بلا أثر. لم يلغ status في قائمة الجرد، ولم تلغ تصفية lines بالرف أو التاجر أو scopes بالتاجر. GET events يظلstaff-only.
+- اختبار الجرد يرى دورة COUNTING فقط عند اختيارها، ويرى CANCELLED عند اختيارها؛ scope/pages وlimit101 وunknown fields والتحكم في الملكية مثبتة بالـ HTTP.
+- صنف بلا حركة يعرض صفرًا وupdatedAt:null؛ الصفحات والتفاصيل مطابقة للعقد. GOOD receipt يسمح notes/issueType:null القائمة في المصدر.
+- إعادة receipt أو manual adjustment بنفس key/body/actor تعيد200 ونفس المستند؛ لا زيادة دفتر. المصدر اليدوي referenceMovementId وغير الجرد stocktakeLineId:null، ومصدر الجرد بالعكس.
+- دورة integration فعلية: receipt10 → manual shortage1 → shipment4 → return GOOD1 وaccepted NOTED3 → stocktake shortage1؛ ست حركات برصيد نهائي8. مقارنة recursive تثبت حقول كل مصدر متداخل، null للمصدر غير المستخدم، enums وUUID وتوقيت JSON، لا empty schema.
+- merchant الخاص يستطيع قراءة مستنده ومصادر حركته، والآخر404 للتفاصيل وقوائمه فارغة، forged merchant filter403. M لا ينشئ التسوية403.
+- لا تعديل شيما/ترحيلات/اعتماديات أو business mutation/session/gate أو statuses أو JSON.
+
+### الفحوص الفعلية
+
+- regression قبل التنفيذ: اختبار query فشل لأن status المتجاهل رجع200، واختبار OpenAPI فشل لغياب required key؛ فشل مقصود يثبت change point.
+- الفحوص المستهدفة بعد التنفيذ:4 اختبارات جديدة نجحت (33 القائمة الأخرى لم تستهدف في ذلك التشغيل).
+- npm run build:نجح منفردًا وعند بناء test:e2e النهائي.
+- npm run lint:نجح دون تحذير أو خطأ.
+- npm test:4 اختبارات نجحت.
+- npm run test:e2e -- --no-file-parallelism:156 اختبارًا نجحت عبر9 ملفات، بينها4 جديدة لهذه المرحلة. PostgreSQL الاختبار محلي ومعزول.
+- npx prettier --check على14 ملف source/test معدلة أو جديدة:نجح. git diff --check وwhitespace check للملفات الجديدة:نجحا.
+- SQL/Prisma schema لم تتغير، فلم تعد فحوص SQL في هذه المرحلة؛ أرقام SQL السابقة ليست فحوصًا جديدة. لا Graphify backend قائم لتحديثه؛ سجل المصدر هنا محدث.
+- Antigravity غير متاح بسبب quota429 الموثق؛ لا محاولة مكررة للحصة ولا ادعاء مراجعة مستقلة. Codex يملك مراجعة المصدر/الفرق والقرارات والنتائج.
+
+### الناقص والخطوة التالية
+
+1. ضبط query الأرصدة: ListInventoryDto مشترك مع movements؛ actorId/kind/from/to تقبل في balances دون استعمالها. هذه متابعة مصدرية معروفة خارج Blueprint تضييق query الجرد، موثقة أيضًا في inventory-api.md. يلزم عقد balances مستقل مع اختبارات توافق/ملكية، دون إلغاء هذه الفلاتر الفعالة في movements.
+2. مراجعة توثيق pagination query الحالية للمخزون: page/limit في ListInventoryDto بلا ApiPropertyOptional صريحة؛ يلزم تحقق OpenAPI ونطاق موثق عند فصل query الأرصدة، بدل ادعاء أن توثيق الاستجابة يغطي كل المدخلات.
+3. سجل تعديلات وصفي دائم للأصناف/المواقع وسجل إدارة دائم (قبل/بعد/سبب/فاعل/وقت) يحتاج Blueprint وسياسة احتفاظ. Logger الحالي ليس جدول تدقيق ذريًا دائمًا.
+4. أمان الإنتاج الفعلي: TLS/grants/runtime-vs-migrations/secrets/dependencies/client-web policy؛ لم يختبر إنتاج أو ينشر.
+5. UUID scope normalization، واختبار قبول الدورة مع العميل، ثم ربط/استبدال الباك إند داخل Flutter لاحقًا بنطاق مستقل.
+
+التالي المقترح: إغلاق query الأرصدة وتوثيق pagination المفقود بنطاق صغير، ثم تصميم سجل التعديلات الدائم؛ نجاح اختبارات القراءة لا يعني اكتمال المشروع أو جاهزية الإنتاج.
+
+Conventional Commit المقترح: `fix(api): complete read contracts and stocktake query validation`.

@@ -1,4 +1,8 @@
 import {
+  AdjustmentResponseDto,
+  AdjustmentListResponseDto,
+} from './dto/adjustment-response.dto.js';
+import {
   Body,
   Controller,
   Get,
@@ -17,6 +21,7 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiTags,
+  ApiHeader,
 } from '@nestjs/swagger';
 import { UserRole } from '../generated/prisma/client.js';
 import { CurrentAuthentication, Roles } from '../auth/decorators/access.js';
@@ -40,7 +45,16 @@ export class StockAdjustmentsController {
   ) {}
   @Post()
   @Roles(UserRole.ADMIN)
-  @ApiCreatedResponse()
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: true,
+    schema: { type: 'string', format: 'uuid' },
+  })
+  @ApiCreatedResponse({ type: AdjustmentResponseDto })
+  @ApiOkResponse({
+    type: AdjustmentResponseDto,
+    description: 'Identical actor-bound replay',
+  })
   async create(
     @CurrentAuthentication() context: AuthenticationContext,
     @Headers('idempotency-key') key: string | undefined,
@@ -52,7 +66,7 @@ export class StockAdjustmentsController {
     return result.adjustment;
   }
   @Get()
-  @ApiOkResponse()
+  @ApiOkResponse({ type: AdjustmentListResponseDto })
   list(
     @CurrentAuthentication() context: AuthenticationContext,
     @Query() query: ListAdjustmentsDto,
@@ -60,7 +74,7 @@ export class StockAdjustmentsController {
     return this.adjustments.list(context, query);
   }
   @Get(':id')
-  @ApiOkResponse()
+  @ApiOkResponse({ type: AdjustmentResponseDto })
   get(
     @CurrentAuthentication() context: AuthenticationContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
