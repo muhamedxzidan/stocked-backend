@@ -1,15 +1,12 @@
-import { Transform, Type } from 'class-transformer';
+import { Transform } from 'class-transformer';
 import {
   IsBoolean,
-  IsInt,
-  IsOptional,
   IsString,
   IsUUID,
   Matches,
-  Max,
   MaxLength,
-  Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 export class CreateStorageRowDto {
@@ -49,8 +46,8 @@ export class CreateStorageShelfDto {
   @ApiProperty({ format: 'uuid' }) @IsUUID('4') merchantId!: string;
 }
 export class UpdateStorageLocationDto {
-  @ApiPropertyOptional()
-  @IsOptional()
+  @ApiPropertyOptional({ type: String, nullable: false })
+  @ValidateIf((_object, value: unknown) => value !== undefined)
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
   )
@@ -58,34 +55,8 @@ export class UpdateStorageLocationDto {
   @MinLength(1)
   @MaxLength(120)
   name?: string;
-  @ApiPropertyOptional() @IsOptional() @IsBoolean() isActive?: boolean;
-}
-export class ListStorageLocationsDto {
-  @ApiPropertyOptional({ format: 'uuid' })
-  @IsOptional()
-  @IsUUID('4')
-  merchantId?: string;
-  @ApiPropertyOptional({ format: 'uuid' })
-  @IsOptional()
-  @IsUUID('4')
-  shelfId?: string;
-  @ApiPropertyOptional({ format: 'uuid' })
-  @IsOptional()
-  @IsUUID('4')
-  rowId?: string;
-  @ApiPropertyOptional({ format: 'uuid' })
-  @IsOptional()
-  @IsUUID('4')
-  itemId?: string;
-  @ApiPropertyOptional({ default: 1 })
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page = 1;
-  @ApiPropertyOptional({ default: 50, maximum: 100 })
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  limit = 50;
+  @ApiPropertyOptional({ type: Boolean, nullable: false })
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsBoolean()
+  isActive?: boolean;
 }

@@ -10,7 +10,14 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiTags,
+  ApiHeader,
+  ApiOkResponse,
+  ApiExtraModels,
+  getSchemaPath,
+} from '@nestjs/swagger';
 import { UserRole } from '../generated/prisma/client.js';
 import { CurrentAuthentication, Roles } from '../auth/decorators/access.js';
 import type { AuthenticationContext } from '../auth/authenticated-user.js';
@@ -28,6 +35,28 @@ import { StocktakeCountingService } from './stocktake-counting.service.js';
 import { StocktakeApprovalService } from './stocktake-approval.service.js';
 import { StocktakeCancellationService } from './stocktake-cancellation.service.js';
 import { StocktakesReadService } from './stocktakes-read.service.js';
+import {
+  StocktakeCommandResponseDto,
+  StocktakeStaffResponseDto,
+  StocktakeMerchantResponseDto,
+  StocktakesStaffResponseDto,
+  StocktakesMerchantResponseDto,
+  StocktakeStaffLinesResponseDto,
+  StocktakeMerchantLinesResponseDto,
+  StocktakeScopesResponseDto,
+  StocktakeEventsResponseDto,
+} from './dto/stocktake-response.dto.js';
+@ApiExtraModels(
+  StocktakeCommandResponseDto,
+  StocktakeStaffResponseDto,
+  StocktakeMerchantResponseDto,
+  StocktakesStaffResponseDto,
+  StocktakesMerchantResponseDto,
+  StocktakeStaffLinesResponseDto,
+  StocktakeMerchantLinesResponseDto,
+  StocktakeScopesResponseDto,
+  StocktakeEventsResponseDto,
+)
 @ApiTags('Stocktakes')
 @ApiBearerAuth()
 @Roles(UserRole.ADMIN, UserRole.WAREHOUSE_KEEPER)
@@ -45,68 +74,135 @@ export class StocktakesController {
     @Inject(StocktakesReadService)
     private readonly reads: StocktakesReadService,
   ) {}
-  @Post() @HttpCode(200) open(
-    @CurrentAuthentication() c: AuthenticationContext,
+  @Post()
+  @HttpCode(200)
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: true,
+    schema: { type: 'string', format: 'uuid' },
+  })
+  @ApiOkResponse({ type: StocktakeCommandResponseDto })
+  open(
+    @CurrentAuthentication() context: AuthenticationContext,
     @Headers('idempotency-key') key: string | undefined,
-    @Body() i: OpenStocktakeDto,
+    @Body() input: OpenStocktakeDto,
   ) {
-    return this.opening.open(c, key, i);
+    return this.opening.open(context, key, input);
   }
-  @Post(':id/counts') @HttpCode(200) count(
-    @CurrentAuthentication() c: AuthenticationContext,
+  @Post(':id/counts')
+  @HttpCode(200)
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: true,
+    schema: { type: 'string', format: 'uuid' },
+  })
+  @ApiOkResponse({ type: StocktakeCommandResponseDto })
+  count(
+    @CurrentAuthentication() context: AuthenticationContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Headers('idempotency-key') key: string | undefined,
-    @Body() i: RecordStocktakeCountDto,
+    @Body() input: RecordStocktakeCountDto,
   ) {
-    return this.counting.count(c, id, key, i);
+    return this.counting.count(context, id, key, input);
   }
-  @Post(':id/attendance') @HttpCode(200) attendance(
-    @CurrentAuthentication() c: AuthenticationContext,
+  @Post(':id/attendance')
+  @HttpCode(200)
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: true,
+    schema: { type: 'string', format: 'uuid' },
+  })
+  @ApiOkResponse({ type: StocktakeCommandResponseDto })
+  attendance(
+    @CurrentAuthentication() context: AuthenticationContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Headers('idempotency-key') key: string | undefined,
-    @Body() i: StocktakeAttendanceDto,
+    @Body() input: StocktakeAttendanceDto,
   ) {
-    return this.counting.attendance(c, id, key, i);
+    return this.counting.attendance(context, id, key, input);
   }
-  @Post(':id/notes') @HttpCode(200) note(
-    @CurrentAuthentication() c: AuthenticationContext,
+  @Post(':id/notes')
+  @HttpCode(200)
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: true,
+    schema: { type: 'string', format: 'uuid' },
+  })
+  @ApiOkResponse({ type: StocktakeCommandResponseDto })
+  note(
+    @CurrentAuthentication() context: AuthenticationContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Headers('idempotency-key') key: string | undefined,
-    @Body() i: StocktakeNotesDto,
+    @Body() input: StocktakeNotesDto,
   ) {
-    return this.counting.transition(c, id, key, i, 'NOTED');
+    return this.counting.transition(context, id, key, input, 'NOTED');
   }
-  @Post(':id/submit') @HttpCode(200) submit(
-    @CurrentAuthentication() c: AuthenticationContext,
+  @Post(':id/submit')
+  @HttpCode(200)
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: true,
+    schema: { type: 'string', format: 'uuid' },
+  })
+  @ApiOkResponse({ type: StocktakeCommandResponseDto })
+  submit(
+    @CurrentAuthentication() context: AuthenticationContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Headers('idempotency-key') key: string | undefined,
-    @Body() i: StocktakeNotesDto,
+    @Body() input: StocktakeNotesDto,
   ) {
-    return this.counting.transition(c, id, key, i, 'SUBMITTED');
+    return this.counting.transition(context, id, key, input, 'SUBMITTED');
   }
-  @Post(':id/reopen') @HttpCode(200) @Roles(UserRole.ADMIN) reopen(
-    @CurrentAuthentication() c: AuthenticationContext,
+  @Post(':id/reopen')
+  @HttpCode(200)
+  @Roles(UserRole.ADMIN)
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: true,
+    schema: { type: 'string', format: 'uuid' },
+  })
+  @ApiOkResponse({ type: StocktakeCommandResponseDto })
+  reopen(
+    @CurrentAuthentication() context: AuthenticationContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Headers('idempotency-key') key: string | undefined,
-    @Body() i: StocktakeNotesDto,
+    @Body() input: StocktakeNotesDto,
   ) {
-    return this.counting.transition(c, id, key, i, 'REOPENED');
+    return this.counting.transition(context, id, key, input, 'REOPENED');
   }
-  @Post(':id/approve') @HttpCode(200) @Roles(UserRole.ADMIN) approve(
-    @CurrentAuthentication() c: AuthenticationContext,
+  @Post(':id/approve')
+  @HttpCode(200)
+  @Roles(UserRole.ADMIN)
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: true,
+    schema: { type: 'string', format: 'uuid' },
+  })
+  @ApiOkResponse({ type: StocktakeCommandResponseDto })
+  approve(
+    @CurrentAuthentication() context: AuthenticationContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Headers('idempotency-key') key: string | undefined,
-    @Body() i: ApproveStocktakeDto,
+    @Body() input: ApproveStocktakeDto,
   ) {
-    return this.approval.approve(c, id, key, i);
+    return this.approval.approve(context, id, key, input);
   }
-  @Post(':id/cancel') @HttpCode(200) @Roles(UserRole.ADMIN) cancel(
-    @CurrentAuthentication() c: AuthenticationContext,
+  @Post(':id/cancel')
+  @HttpCode(200)
+  @Roles(UserRole.ADMIN)
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: true,
+    schema: { type: 'string', format: 'uuid' },
+  })
+  @ApiOkResponse({ type: StocktakeCommandResponseDto })
+  cancel(
+    @CurrentAuthentication() context: AuthenticationContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Headers('idempotency-key') key: string | undefined,
-    @Body() i: StocktakeNotesDto,
+    @Body() input: StocktakeNotesDto,
   ) {
-    return this.cancellation.cancel(c, id, key, i);
+    return this.cancellation.cancel(context, id, key, input);
   }
   @Get()
   @Roles(
@@ -115,11 +211,21 @@ export class StocktakesController {
     UserRole.EMPLOYEE,
     UserRole.MERCHANT,
   )
+  @ApiOkResponse({
+    description:
+      'Staff receive the full representation; merchants receive only their scoped representation.',
+    schema: {
+      anyOf: [
+        { $ref: getSchemaPath(StocktakesStaffResponseDto) },
+        { $ref: getSchemaPath(StocktakesMerchantResponseDto) },
+      ],
+    },
+  })
   list(
-    @CurrentAuthentication() c: AuthenticationContext,
-    @Query() q: ListStocktakesDto,
+    @CurrentAuthentication() context: AuthenticationContext,
+    @Query() query: ListStocktakesDto,
   ) {
-    return this.reads.list(c, q);
+    return this.reads.list(context, query);
   }
   @Get(':id')
   @Roles(
@@ -128,11 +234,21 @@ export class StocktakesController {
     UserRole.EMPLOYEE,
     UserRole.MERCHANT,
   )
+  @ApiOkResponse({
+    description:
+      'Staff receive the full representation; merchants receive only their scoped representation.',
+    schema: {
+      anyOf: [
+        { $ref: getSchemaPath(StocktakeStaffResponseDto) },
+        { $ref: getSchemaPath(StocktakeMerchantResponseDto) },
+      ],
+    },
+  })
   get(
-    @CurrentAuthentication() c: AuthenticationContext,
+    @CurrentAuthentication() context: AuthenticationContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
   ) {
-    return this.reads.get(c, id);
+    return this.reads.get(context, id);
   }
   @Get(':id/lines')
   @Roles(
@@ -141,12 +257,22 @@ export class StocktakesController {
     UserRole.EMPLOYEE,
     UserRole.MERCHANT,
   )
+  @ApiOkResponse({
+    description:
+      'Staff receive the full representation; merchants receive only their scoped representation.',
+    schema: {
+      anyOf: [
+        { $ref: getSchemaPath(StocktakeStaffLinesResponseDto) },
+        { $ref: getSchemaPath(StocktakeMerchantLinesResponseDto) },
+      ],
+    },
+  })
   lines(
-    @CurrentAuthentication() c: AuthenticationContext,
+    @CurrentAuthentication() context: AuthenticationContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
-    @Query() q: StocktakeLinesQueryDto,
+    @Query() query: StocktakeLinesQueryDto,
   ) {
-    return this.reads.lines(c, id, q);
+    return this.reads.lines(context, id, query);
   }
   @Get(':id/scopes')
   @Roles(
@@ -155,20 +281,22 @@ export class StocktakesController {
     UserRole.EMPLOYEE,
     UserRole.MERCHANT,
   )
+  @ApiOkResponse({ type: StocktakeScopesResponseDto })
   scopes(
-    @CurrentAuthentication() c: AuthenticationContext,
+    @CurrentAuthentication() context: AuthenticationContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
-    @Query() q: ListStocktakesDto,
+    @Query() query: ListStocktakesDto,
   ) {
-    return this.reads.scopes(c, id, q);
+    return this.reads.scopes(context, id, query);
   }
   @Get(':id/events')
   @Roles(UserRole.ADMIN, UserRole.WAREHOUSE_KEEPER, UserRole.EMPLOYEE)
+  @ApiOkResponse({ type: StocktakeEventsResponseDto })
   events(
-    @CurrentAuthentication() c: AuthenticationContext,
+    @CurrentAuthentication() context: AuthenticationContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
-    @Query() q: ListStocktakesDto,
+    @Query() query: ListStocktakesDto,
   ) {
-    return this.reads.events(c, id, q);
+    return this.reads.events(context, id, query);
   }
 }

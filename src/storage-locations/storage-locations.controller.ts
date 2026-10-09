@@ -10,7 +10,13 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiTags,
+  ApiHeader,
+  ApiOkResponse,
+  ApiCreatedResponse,
+} from '@nestjs/swagger';
 import { CurrentAuthentication, Roles } from '../auth/decorators/access.js';
 import type { AuthenticationContext } from '../auth/authenticated-user.js';
 import { UserRole } from '../generated/prisma/client.js';
@@ -18,7 +24,6 @@ import { StorageLocationsService } from './storage-locations.service.js';
 import {
   CreateStorageRowDto,
   CreateStorageShelfDto,
-  ListStorageLocationsDto,
   UpdateStorageLocationDto,
 } from './dto/storage-location.dto.js';
 import { StockPlacementService } from '../inventory/stock-placement.service.js';
@@ -27,6 +32,24 @@ import {
   PlacementTransferDto,
   CustodyTransferDto,
 } from '../inventory/dto/stock-placement.dto.js';
+import {
+  StorageRowsQueryDto,
+  StorageShelvesQueryDto,
+  StorageBalancesQueryDto,
+  StorageHistoryQueryDto,
+} from './dto/storage-location-query.dto.js';
+import {
+  CustodyBalancesResponseDto,
+  CustodyTransferResultDto,
+  StorageBalancesResponseDto,
+  StorageEntriesResponseDto,
+  StorageRowResponseDto,
+  StorageRowsResponseDto,
+  StorageShelfResponseDto,
+  StorageShelvesResponseDto,
+  StorageTransferResultDto,
+  StorageTransfersResponseDto,
+} from './dto/storage-location-response.dto.js';
 @ApiTags('Storage locations')
 @ApiBearerAuth()
 @Roles(
@@ -45,84 +68,120 @@ export class StorageLocationsController {
     @Inject(ReturnCustodyPlacementService)
     private readonly custody: ReturnCustodyPlacementService,
   ) {}
-  @Post('rows') @Roles(UserRole.ADMIN) createRow(
-    @CurrentAuthentication() c: AuthenticationContext,
-    @Body() i: CreateStorageRowDto,
+  @Post('rows')
+  @Roles(UserRole.ADMIN)
+  @ApiCreatedResponse({ type: StorageRowResponseDto })
+  createRow(
+    @CurrentAuthentication() context: AuthenticationContext,
+    @Body() input: CreateStorageRowDto,
   ) {
-    return this.locations.createRow(c, i);
+    return this.locations.createRow(context, input);
   }
-  @Post('shelves') @Roles(UserRole.ADMIN) createShelf(
-    @CurrentAuthentication() c: AuthenticationContext,
-    @Body() i: CreateStorageShelfDto,
+  @Post('shelves')
+  @Roles(UserRole.ADMIN)
+  @ApiCreatedResponse({ type: StorageShelfResponseDto })
+  createShelf(
+    @CurrentAuthentication() context: AuthenticationContext,
+    @Body() input: CreateStorageShelfDto,
   ) {
-    return this.locations.createShelf(c, i);
+    return this.locations.createShelf(context, input);
   }
-  @Patch('rows/:id') @Roles(UserRole.ADMIN) updateRow(
-    @CurrentAuthentication() c: AuthenticationContext,
+  @Patch('rows/:id')
+  @Roles(UserRole.ADMIN)
+  @ApiOkResponse({ type: StorageRowResponseDto })
+  updateRow(
+    @CurrentAuthentication() context: AuthenticationContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
-    @Body() i: UpdateStorageLocationDto,
+    @Body() input: UpdateStorageLocationDto,
   ) {
-    return this.locations.update(c, id, i, 'ROW');
+    return this.locations.update(context, id, input, 'ROW');
   }
-  @Patch('shelves/:id') @Roles(UserRole.ADMIN) updateShelf(
-    @CurrentAuthentication() c: AuthenticationContext,
+  @Patch('shelves/:id')
+  @Roles(UserRole.ADMIN)
+  @ApiOkResponse({ type: StorageShelfResponseDto })
+  updateShelf(
+    @CurrentAuthentication() context: AuthenticationContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
-    @Body() i: UpdateStorageLocationDto,
+    @Body() input: UpdateStorageLocationDto,
   ) {
-    return this.locations.update(c, id, i, 'SHELF');
+    return this.locations.update(context, id, input, 'SHELF');
   }
-  @Get('rows') rows(
-    @CurrentAuthentication() c: AuthenticationContext,
-    @Query() q: ListStorageLocationsDto,
+  @Get('rows')
+  @ApiOkResponse({ type: StorageRowsResponseDto })
+  rows(
+    @CurrentAuthentication() context: AuthenticationContext,
+    @Query() query: StorageRowsQueryDto,
   ) {
-    return this.locations.rows(c, q);
+    return this.locations.rows(context, query);
   }
-  @Get('shelves') shelves(
-    @CurrentAuthentication() c: AuthenticationContext,
-    @Query() q: ListStorageLocationsDto,
+  @Get('shelves')
+  @ApiOkResponse({ type: StorageShelvesResponseDto })
+  shelves(
+    @CurrentAuthentication() context: AuthenticationContext,
+    @Query() query: StorageShelvesQueryDto,
   ) {
-    return this.locations.shelves(c, q);
+    return this.locations.shelves(context, query);
   }
-  @Get('balances') balances(
-    @CurrentAuthentication() c: AuthenticationContext,
-    @Query() q: ListStorageLocationsDto,
+  @Get('balances')
+  @ApiOkResponse({ type: StorageBalancesResponseDto })
+  balances(
+    @CurrentAuthentication() context: AuthenticationContext,
+    @Query() query: StorageBalancesQueryDto,
   ) {
-    return this.locations.balances(c, q, 'AVAILABLE');
+    return this.locations.balances(context, query, 'AVAILABLE');
   }
-  @Get('custody') custodyBalances(
-    @CurrentAuthentication() c: AuthenticationContext,
-    @Query() q: ListStorageLocationsDto,
+  @Get('custody')
+  @ApiOkResponse({ type: CustodyBalancesResponseDto })
+  custodyBalances(
+    @CurrentAuthentication() context: AuthenticationContext,
+    @Query() query: StorageBalancesQueryDto,
   ) {
-    return this.locations.balances(c, q, 'CUSTODY');
+    return this.locations.balances(context, query, 'CUSTODY');
   }
-  @Post('transfers') @Roles(UserRole.ADMIN, UserRole.WAREHOUSE_KEEPER) transfer(
-    @CurrentAuthentication() c: AuthenticationContext,
+  @Post('transfers')
+  @Roles(UserRole.ADMIN, UserRole.WAREHOUSE_KEEPER)
+  @ApiCreatedResponse({ type: StorageTransferResultDto })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: true,
+    schema: { type: 'string', format: 'uuid' },
+  })
+  transfer(
+    @CurrentAuthentication() context: AuthenticationContext,
     @Headers('idempotency-key') key: string | undefined,
-    @Body() i: PlacementTransferDto,
+    @Body() input: PlacementTransferDto,
   ) {
-    return this.placements.transfer(c, key, i);
+    return this.placements.transfer(context, key, input);
   }
   @Post('custody-transfers')
   @Roles(UserRole.ADMIN, UserRole.WAREHOUSE_KEEPER)
+  @ApiCreatedResponse({ type: CustodyTransferResultDto })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: true,
+    schema: { type: 'string', format: 'uuid' },
+  })
   transferCustody(
-    @CurrentAuthentication() c: AuthenticationContext,
+    @CurrentAuthentication() context: AuthenticationContext,
     @Headers('idempotency-key') key: string | undefined,
-    @Body() i: CustodyTransferDto,
+    @Body() input: CustodyTransferDto,
   ) {
-    return this.custody.transfer(c, key, i);
+    return this.custody.transfer(context, key, input);
   }
   @Get('entries')
+  @ApiOkResponse({ type: StorageEntriesResponseDto })
   entries(
-    @CurrentAuthentication() c: AuthenticationContext,
-    @Query() q: ListStorageLocationsDto,
+    @CurrentAuthentication() context: AuthenticationContext,
+    @Query() query: StorageHistoryQueryDto,
   ) {
-    return this.locations.entries(c, q);
+    return this.locations.entries(context, query);
   }
   @Get('transfers')
+  @ApiOkResponse({ type: StorageTransfersResponseDto })
   transfers(
-    @CurrentAuthentication() c: AuthenticationContext,
-    @Query() q: ListStorageLocationsDto,
+    @CurrentAuthentication() context: AuthenticationContext,
+    @Query() query: StorageHistoryQueryDto,
   ) {
-    return this.locations.transfers(c, q);
+    return this.locations.transfers(context, query);
   }
 }

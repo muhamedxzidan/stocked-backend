@@ -13,9 +13,14 @@ import { Prisma } from '../generated/prisma/client.js';
 import type {
   CreateStorageRowDto,
   CreateStorageShelfDto,
-  ListStorageLocationsDto,
   UpdateStorageLocationDto,
 } from './dto/storage-location.dto.js';
+import type {
+  StorageRowsQueryDto,
+  StorageShelvesQueryDto,
+  StorageBalancesQueryDto,
+  StorageHistoryQueryDto,
+} from './dto/storage-location-query.dto.js';
 @Injectable()
 export class StorageLocationsService {
   constructor(
@@ -129,10 +134,7 @@ export class StorageLocationsService {
         : tx.storageShelf.update({ where: { id }, data: input });
     });
   }
-  async shelves(
-    context: AuthenticationContext,
-    query: ListStorageLocationsDto,
-  ) {
+  async shelves(context: AuthenticationContext, query: StorageShelvesQueryDto) {
     const merchantId = this.scope(context, query.merchantId);
     const where: Prisma.StorageShelfWhereInput = {
       ...(merchantId ? { merchantId } : {}),
@@ -153,7 +155,7 @@ export class StorageLocationsService {
     );
     return { items, total, page: query.page, limit: query.limit };
   }
-  async rows(context: AuthenticationContext, query: ListStorageLocationsDto) {
+  async rows(context: AuthenticationContext, query: StorageRowsQueryDto) {
     const merchantId = this.scope(context, query.merchantId);
     const rows = merchantId
       ? (
@@ -184,7 +186,7 @@ export class StorageLocationsService {
   }
   async balances(
     context: AuthenticationContext,
-    query: ListStorageLocationsDto,
+    query: StorageBalancesQueryDto,
     kind: 'AVAILABLE' | 'CUSTODY',
   ) {
     const merchantId = this.scope(context, query.merchantId);
@@ -232,10 +234,7 @@ export class StorageLocationsService {
     );
     return { items, total, page: query.page, limit: query.limit };
   }
-  async entries(
-    context: AuthenticationContext,
-    query: ListStorageLocationsDto,
-  ) {
+  async entries(context: AuthenticationContext, query: StorageHistoryQueryDto) {
     const merchantId = this.scope(context, query.merchantId);
     const where = {
       ...(merchantId ? { merchantId } : {}),
@@ -258,7 +257,7 @@ export class StorageLocationsService {
   }
   async transfers(
     context: AuthenticationContext,
-    query: ListStorageLocationsDto,
+    query: StorageHistoryQueryDto,
   ) {
     const merchantId = this.scope(context, query.merchantId);
     const where: Prisma.StockPlacementTransferWhereInput = {

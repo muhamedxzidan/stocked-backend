@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
+import request from 'supertest';
 import { setTimeout } from 'node:timers/promises';
 import { createAdminFixture } from '../support/admin-fixture.js';
 
@@ -154,6 +155,480 @@ describe('Stocktake, shelf allocation and global write gate', () => {
     }
     throw new Error('Expected write gate waiter not observed');
   }
+
+  it('rejects null and invalid location patches without changing either location', async () => {
+    const beforeRow = await f.database.storageRow.findUniqueOrThrow({
+      where: { id: rowId },
+    });
+    const beforeShelf = await f.database.storageShelf.findUniqueOrThrow({
+      where: { id: shelfId },
+    });
+    for (const [kind, id] of [
+      ['rows', rowId],
+      ['shelves', shelfId],
+    ]) {
+      for (const body of [
+        { name: null },
+        { isActive: null },
+        {},
+        { name: '   ' },
+        { isActive: 'false' },
+        { merchantId: otherMerchantId },
+      ]) {
+        await request(f.app.getHttpServer())
+          .patch(`/api/v1/storage-locations/${kind}/${id}`)
+          .set('Authorization', `Bearer ${f.token}`)
+          .send(body)
+          .expect(400);
+      }
+    }
+    expect(
+      await f.database.storageRow.findUniqueOrThrow({ where: { id: rowId } }),
+    ).toEqual(beforeRow);
+    expect(
+      await f.database.storageShelf.findUniqueOrThrow({
+        where: { id: shelfId },
+      }),
+    ).toEqual(beforeShelf);
+    await request(f.app.getHttpServer())
+      .patch(`/api/v1/storage-locations/shelves/${shelfId}`)
+      .set('Authorization', `Bearer ${f.token}`)
+      .send({ name: '  Updated shelf  ' })
+      .expect(200);
+    expect(
+      (
+        await f.database.storageShelf.findUniqueOrThrow({
+          where: { id: shelfId },
+        })
+      ).name,
+    ).toBe('Updated shelf');
+    await request(f.app.getHttpServer())
+      .patch(`/api/v1/storage-locations/rows/${rowId}`)
+      .set('Authorization', `Bearer ${keeperToken}`)
+      .send({ name: 'Forbidden change' })
+      .expect(403);
+  });
+
+  it('rejects unsupported location filters and retains supported ownership and pagination filters', async () => {
+    for (const [path, filter] of [
+      ['rows', 'itemId'],
+      ['rows', 'shelfId'],
+      ['shelves', 'itemId'],
+      ['entries', 'rowId'],
+      ['transfers', 'rowId'],
+    ]) {
+      await f
+        .get(`/storage-locations/${path}?${filter}=${randomUUID()}`)
+        .expect(400);
+    }
+    for (const path of [
+      'rows',
+      'shelves',
+      'balances',
+      'custody',
+      'entries',
+      'transfers',
+    ]) {
+      await f.get(`/storage-locations/${path}?limit=101`).expect(400);
+      await f.get(`/storage-locations/${path}?unexpected=true`).expect(400);
+    }
+    await receipt(5);
+    const own = await f.createUser('MERCHANT', merchantId);
+    const token = await f.tokenFor(own.id);
+    for (const path of [
+      'rows',
+      'shelves',
+      'balances',
+      'custody',
+      'entries',
+      'transfers',
+    ]) {
+      await f
+        .get(`/storage-locations/${path}?merchantId=${otherMerchantId}`, token)
+        .expect(403);
+    }
+    const rows = (
+      await f
+        .get(
+          `/storage-locations/rows?merchantId=${merchantId}&rowId=${rowId}&page=1&limit=1`,
+          token,
+        )
+        .expect(200)
+    ).body;
+    expect(rows.items.map((r: { id: string }) => r.id)).toEqual([rowId]);
+    const shelves = (
+      await f
+        .get(
+          `/storage-locations/shelves?rowId=${rowId}&shelfId=${shelfId}`,
+          token,
+        )
+        .expect(200)
+    ).body;
+    expect(shelves.items.map((r: { id: string }) => r.id)).toEqual([shelfId]);
+    for (const path of ['balances', 'custody']) {
+      const result = (
+        await f
+          .get(
+            `/storage-locations/${path}?rowId=${rowId}&shelfId=${shelfId}&itemId=${itemId}`,
+            token,
+          )
+          .expect(200)
+      ).body;
+      expect(
+        result.items.every(
+          (r: { itemId: string; shelfId: string }) =>
+            r.itemId === itemId && r.shelfId === shelfId,
+        ),
+      ).toBe(true);
+    }
+    const entries = (
+      await f
+        .get(
+          `/storage-locations/entries?itemId=${itemId}&shelfId=${shelfId}`,
+          token,
+        )
+        .expect(200)
+    ).body;
+    expect(entries.items.length).toBeGreaterThan(0);
+    expect(
+      entries.items.every(
+        (r: { itemId: string; shelfId: string }) =>
+          r.itemId === itemId && r.shelfId === shelfId,
+      ),
+    ).toBe(true);
+    await command('/storage-locations/transfers', {
+      itemId,
+      fromShelfId: shelfId,
+      toShelfId: secondShelfId,
+      quantity: 1,
+      reason: notes,
+    }).expect(201);
+    const transfers = (
+      await f
+        .get(
+          `/storage-locations/transfers?itemId=${itemId}&shelfId=${secondShelfId}`,
+          token,
+        )
+        .expect(200)
+    ).body;
+    expect(transfers.total).toBe(1);
+    expect(transfers.items[0].toShelfId).toBe(secondShelfId);
+  });
+
+  it('publishes response schemas, required command keys and only supported location queries', async () => {
+    const doc = (
+      await request(f.app.getHttpServer()).get('/api/docs-json').expect(200)
+    ).body;
+    for (const [path, verbs] of Object.entries(doc.paths) as [
+      string,
+      Record<
+        string,
+        {
+          parameters?: { name: string; in: string; required?: boolean }[];
+          responses: Record<
+            string,
+            { content?: { 'application/json'?: { schema?: object } } }
+          >;
+        }
+      >,
+    ][]) {
+      if (
+        !path.startsWith('/api/v1/stocktakes') &&
+        !path.startsWith('/api/v1/storage-locations')
+      )
+        continue;
+      for (const [method, operation] of Object.entries(verbs)) {
+        const status =
+          method === 'post' && path.startsWith('/api/v1/storage-locations')
+            ? '201'
+            : '200';
+        expect(
+          operation.responses[status]?.content?.['application/json']?.schema,
+        ).toBeDefined();
+        const header = operation.parameters?.find(
+          (p) => p.in === 'header' && p.name === 'Idempotency-Key',
+        );
+        const keyed =
+          method === 'post' &&
+          (path.startsWith('/api/v1/stocktakes') ||
+            path.endsWith('/transfers') ||
+            path.endsWith('/custody-transfers'));
+        expect(header?.required ?? false).toBe(keyed);
+      }
+    }
+    for (const [path, supported] of [
+      ['rows', ['merchantId', 'rowId', 'page', 'limit']],
+      ['shelves', ['merchantId', 'rowId', 'shelfId', 'page', 'limit']],
+      [
+        'balances',
+        ['merchantId', 'rowId', 'shelfId', 'itemId', 'page', 'limit'],
+      ],
+      [
+        'custody',
+        ['merchantId', 'rowId', 'shelfId', 'itemId', 'page', 'limit'],
+      ],
+      ['entries', ['merchantId', 'shelfId', 'itemId', 'page', 'limit']],
+      ['transfers', ['merchantId', 'shelfId', 'itemId', 'page', 'limit']],
+    ] as const) {
+      expect(
+        doc.paths[`/api/v1/storage-locations/${path}`].get.parameters
+          .filter((p: { in: string }) => p.in === 'query')
+          .map((p: { name: string }) => p.name)
+          .sort(),
+      ).toEqual([...supported].sort());
+    }
+    expect(
+      doc.components.schemas.UpdateStorageLocationDto.properties.name.nullable,
+    ).toBe(false);
+    expect(
+      doc.components.schemas.UpdateStorageLocationDto.properties.isActive
+        .nullable,
+    ).toBe(false);
+  });
+
+  it('matches published location and role-specific stocktake models to live JSON, including replays and nulls', async () => {
+    const doc = (
+      await request(f.app.getHttpServer()).get('/api/docs-json').expect(200)
+    ).body;
+    function matchesModel(name: string, value: Record<string, unknown>) {
+      const schema = doc.components.schemas[name];
+      expect(schema).toBeDefined();
+      expect(Object.keys(value).sort()).toEqual(
+        Object.keys(schema.properties).sort(),
+      );
+      for (const key of schema.required ?? [])
+        expect(value).toHaveProperty(key);
+      for (const [key, definition] of Object.entries(schema.properties) as [
+        string,
+        {
+          type?: string;
+          nullable?: boolean;
+          format?: string;
+          enum?: unknown[];
+        },
+      ][]) {
+        if (value[key] === null) {
+          expect(definition.nullable).toBe(true);
+        } else if (
+          ['string', 'number', 'boolean'].includes(definition.type ?? '')
+        ) {
+          expect(typeof value[key]).toBe(definition.type);
+        }
+        if (definition.enum) expect(definition.enum).toContain(value[key]);
+        if (definition.format === 'date-time' && value[key] !== null)
+          expect(Number.isFinite(Date.parse(value[key] as string))).toBe(true);
+      }
+    }
+    function matchesPage(
+      name: string,
+      body: {
+        items: Record<string, unknown>[];
+        total: number;
+        page: number;
+        limit: number;
+      },
+    ) {
+      matchesModel(name, body);
+      const itemRef = doc.components.schemas[name].properties.items.items
+        .$ref as string;
+      expect(itemRef).toMatch(/^#\/components\/schemas\//);
+      for (const item of body.items)
+        matchesModel(itemRef.split('/').pop()!, item);
+    }
+    await receipt(10);
+    const transferBody = {
+      itemId,
+      fromShelfId: shelfId,
+      toShelfId: secondShelfId,
+      quantity: 1,
+      reason: notes,
+    };
+    const transferKey = randomUUID();
+    const transfer = (
+      await command(
+        '/storage-locations/transfers',
+        transferBody,
+        f.token,
+        transferKey,
+      ).expect(201)
+    ).body;
+    matchesModel('StorageTransferResultDto', transfer);
+    matchesModel('StorageTransferResponseDto', transfer.transfer);
+    const replay = (
+      await command(
+        '/storage-locations/transfers',
+        transferBody,
+        f.token,
+        transferKey,
+      ).expect(201)
+    ).body;
+    expect(replay.replayed).toBe(true);
+    expect(replay.transfer).toEqual(transfer.transfer);
+    const shipment = (
+      await command('/shipments', {
+        merchantId,
+        lines: [{ itemId, quantity: 2 }],
+      }).expect(201)
+    ).body;
+    await command(`/shipments/${shipment.id}/prepare`, {}).expect(201);
+    await command(`/shipments/${shipment.id}/dispatch`, {
+      carrierName: 'Carrier',
+      trackingNumber: 'DOC',
+      placements: [{ itemId, shelfId, quantity: 2 }],
+    }).expect(201);
+    const arrival = (
+      await command('/returns', {
+        merchantId,
+        shipmentId: shipment.id,
+        lines: [
+          {
+            shipmentLineId: shipment.lines[0].id,
+            quantity: 2,
+            placements: [{ shelfId, quantity: 2 }],
+          },
+        ],
+      }).expect(201)
+    ).body;
+    const custodyBody = {
+      receiptLineId: arrival.lines[0].id,
+      fromShelfId: shelfId,
+      toShelfId: secondShelfId,
+      quantity: 1,
+      reason: notes,
+    };
+    const custodyKey = randomUUID();
+    const custody = (
+      await command(
+        '/storage-locations/custody-transfers',
+        custodyBody,
+        f.token,
+        custodyKey,
+      ).expect(201)
+    ).body;
+    matchesModel('CustodyTransferResultDto', custody);
+    matchesModel('CustodyTransferResponseDto', custody.transfer);
+    const custodyReplay = (
+      await command(
+        '/storage-locations/custody-transfers',
+        custodyBody,
+        f.token,
+        custodyKey,
+      ).expect(201)
+    ).body;
+    expect(custodyReplay.replayed).toBe(true);
+    expect(custodyReplay.transfer).toEqual(custody.transfer);
+    for (const [path, model] of [
+      ['rows', 'StorageRowsResponseDto'],
+      ['shelves', 'StorageShelvesResponseDto'],
+      ['balances', 'StorageBalancesResponseDto'],
+      ['custody', 'CustodyBalancesResponseDto'],
+      ['entries', 'StorageEntriesResponseDto'],
+      ['transfers', 'StorageTransfersResponseDto'],
+    ]) {
+      matchesPage(
+        model,
+        (await f.get(`/storage-locations/${path}`).expect(200)).body,
+      );
+    }
+    const own = await f.createUser('MERCHANT', merchantId);
+    const merchantToken = await f.tokenFor(own.id);
+    const foreign = await f.createUser('MERCHANT', otherMerchantId);
+    const foreignToken = await f.tokenFor(foreign.id);
+    await f.post('/storage-locations/transfers', transferBody).expect(400);
+    await f
+      .post('/storage-locations/custody-transfers', custodyBody)
+      .expect(400);
+    await f
+      .post('/stocktakes', {
+        kind: 'FULL',
+        directorId: f.adminId,
+        participantIds: [f.adminId],
+        notes,
+      })
+      .expect(400);
+    const openKey = randomUUID();
+    const opened = (
+      await open('MERCHANT', merchantId, f.token, openKey).expect(200)
+    ).body;
+    matchesModel('StocktakeCommandResponseDto', opened);
+    matchesModel('StocktakeEventResponseDto', opened.event);
+    const openedReplay = (
+      await open('MERCHANT', merchantId, f.token, openKey).expect(200)
+    ).body;
+    expect(openedReplay.replayed).toBe(true);
+    expect(openedReplay.event).toEqual(opened.event);
+    const id = opened.event.stocktakeId;
+    const before = (await f.get(`/stocktakes/${id}/lines`).expect(200)).body;
+    matchesPage('StocktakeStaffLinesResponseDto', before);
+    expect(
+      before.items.every((line: { quantity: null }) => line.quantity === null),
+    ).toBe(true);
+    await countExpected(id);
+    for (const [token, header, list, lineModel] of [
+      [
+        f.token,
+        'StocktakeStaffResponseDto',
+        'StocktakesStaffResponseDto',
+        'StocktakeStaffLinesResponseDto',
+      ],
+      [
+        merchantToken,
+        'StocktakeMerchantResponseDto',
+        'StocktakesMerchantResponseDto',
+        'StocktakeMerchantLinesResponseDto',
+      ],
+    ]) {
+      const body = (await f.get(`/stocktakes/${id}`, token).expect(200)).body;
+      matchesModel(header, body);
+      matchesPage(list, (await f.get('/stocktakes', token).expect(200)).body);
+      matchesPage(
+        lineModel,
+        (await f.get(`/stocktakes/${id}/lines`, token).expect(200)).body,
+      );
+      matchesPage(
+        'StocktakeScopesResponseDto',
+        (await f.get(`/stocktakes/${id}/scopes`, token).expect(200)).body,
+      );
+    }
+    const merchantLines = (
+      await f.get(`/stocktakes/${id}/lines`, merchantToken).expect(200)
+    ).body.items;
+    expect(
+      merchantLines.every(
+        (line: Record<string, unknown>) =>
+          line.merchantId === merchantId &&
+          !('countedById' in line) &&
+          !('countedByNameSnapshot' in line) &&
+          !('countedAt' in line),
+      ),
+    ).toBe(true);
+    await f.get(`/stocktakes/${id}/events`, merchantToken).expect(403);
+    await f.get(`/stocktakes/${id}`, foreignToken).expect(404);
+    matchesPage(
+      'StocktakeEventsResponseDto',
+      (await f.get(`/stocktakes/${id}/events`).expect(200)).body,
+    );
+    await submit(id);
+    const approved = (await approve(id).expect(200)).body;
+    matchesModel('StocktakeCommandResponseDto', approved);
+    matchesModel('StocktakeEventResponseDto', approved.event);
+    matchesModel(
+      'StocktakeStaffResponseDto',
+      (await f.get(`/stocktakes/${id}`).expect(200)).body,
+    );
+    matchesModel(
+      'StocktakeMerchantResponseDto',
+      (await f.get(`/stocktakes/${id}`, merchantToken).expect(200)).body,
+    );
+    const headerVariants =
+      doc.paths['/api/v1/stocktakes/{id}'].get.responses['200'].content[
+        'application/json'
+      ].schema.anyOf;
+    expect(headerVariants.map((v: { $ref: string }) => v.$ref)).toEqual([
+      '#/components/schemas/StocktakeStaffResponseDto',
+      '#/components/schemas/StocktakeMerchantResponseDto',
+    ]);
+  });
 
   it('requires complete merchant-owned shelf allocations and atomically rolls invalid receipts back', async () => {
     await command('/receipts', {
